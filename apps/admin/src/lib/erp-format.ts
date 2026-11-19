@@ -14,6 +14,17 @@ export function money(minor: number | null | undefined, currency = 'SAR'): strin
   return `${fromMinor(minor)} ${currency}`;
 }
 
+/**
+ * Minor units as a plain decimal string, for spreadsheets.
+ *
+ * `money()` appends a currency code, which turns the cell into text and makes a
+ * payslip total unusable in a formula. This keeps the value numeric.
+ */
+export function minorToText(minor: number | null | undefined): string {
+  if (minor === null || minor === undefined) return '';
+  return fromMinor(minor);
+}
+
 export function qty(scaled: number | null | undefined): string {
   if (scaled === null || scaled === undefined) return '—';
   // Trim trailing zeros so "1.0000" reads as "1".

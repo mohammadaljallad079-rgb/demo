@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import type { AttachmentDto } from '@oryx/shared';
+import { getAttachmentEntity, type AttachmentDto } from '@oryx/shared';
 import { useAsync } from '@/lib/hooks';
+import { useAuth } from '@/lib/auth-context';
 import { useUi } from '@/lib/ui-context';
 import { api } from '@/lib/api';
 import { exportCsv, printDocument, type PrintSection } from '@/lib/print';
@@ -41,6 +42,12 @@ export interface RecordPreviewProps {
   table?: { headers: string[]; rows: string[][] };
   canWriteAttachments?: boolean;
   canMarkConfidential?: boolean;
+  /**
+   * Whether this user may print or export the record. Defaults to the read
+   * permission of the attachment catalogue entry, which is the same gate the
+   * API enforces for the record's files.
+   */
+  canPrint?: boolean;
   testId?: string;
 }
 
@@ -56,9 +63,11 @@ export function RecordPreview({
   table,
   canWriteAttachments = false,
   canMarkConfidential = false,
+  canPrint: canPrintProp,
   testId = 'record-preview',
 }: RecordPreviewProps) {
   const { t, locale } = useUi();
+  const { can } = useAuth();
   const [attachmentOverrides, setAttachmentOverrides] = useState<AttachmentDto[] | null>(null);
   const attachments = useAsync(
     () => (entityType && entityId ? api.attachments(entityType, entityId) : Promise.resolve({ items: [], total: 0 })),
@@ -91,6 +100,12 @@ export function RecordPreview({
     },
   ];
 
+  // Printing and exporting copy a record out of the system, so they need the
+  // same read permission the API applies to the record's own attachment
+  // catalogue entry. A section can override with an explicit `canPrint`.
+  const catalogue = entityType ? getAttachmentEntity(entityType) : undefined;
+  const canPrint = canPrintProp ?? (catalogue ? can(catalogue.readPermission) : true);
+
   const print = () => {
     const ok = printDocument({
       title,
@@ -115,15 +130,17 @@ export function RecordPreview({
       footer={
         <>
           <Button onClick={onClose}>{t('common.close')}</Button>
-          {table ? (
+          {table && canPrint ? (
             <Button onClick={exportRows} data-testid={`${testId}-export`}>
               {t('attach.exportCsv')}
             </Button>
           ) : null}
-          <Button variant="primary" onClick={print} data-testid={`${testId}-print`}>
-            <Icon name="scroll" size={14} />
-            {t('attach.print')}
-          </Button>
+          {canPrint ? (
+            <Button variant="primary" onClick={print} data-testid={`${testId}-print`}>
+              <Icon name="scroll" size={14} />
+              {t('attach.print')}
+            </Button>
+          ) : null}
         </>
       }
     >

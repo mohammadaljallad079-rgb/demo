@@ -389,6 +389,62 @@ describe('ORYX Execution 06 (e2e)', () => {
       expect(res.body.payroll.visible).toBe(true);
     });
 
+    it('reports leave balances inside the report pack, not only on the leave tab', async () => {
+      // The reports tab has to answer "how much leave is left" without a second
+      // call, so the pack carries the same balance rows the leave tab returns.
+      const tab = await erp<{ balances: Array<{ id: string; remainingDays: number }> }>(
+        `/hr/employees/${employeeId}/file/leave`,
+      );
+      expect(tab.status).toBe(200);
+      const res = await erp<{ leave: { balances: Array<{ id: string; remainingDays: number }> } }>(
+        `/hr/employees/${employeeId}/file/reports?from=2025-01-01&to=2025-12-31`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.leave.balances).toHaveLength(tab.body.balances.length);
+      if (tab.body.balances.length > 0) {
+        expect(res.body.leave.balances[0].remainingDays).toBe(tab.body.balances[0].remainingDays);
+      }
+    });
+
+    it('names the approver on a decided leave request', async () => {
+      const types = await erp<{ items: Array<{ id: string }> }>('/hr/leave-types');
+      const typeId = types.body.items[0]?.id;
+      if (!typeId) return;
+
+      const created = await erp<{ id: string }>('/hr/leave-requests', {
+        method: 'POST',
+        body: { employeeId, leaveTypeId: typeId, startDate: '2025-03-03', endDate: '2025-03-04', reason: 'family' },
+      });
+      expect(created.status).toBe(201);
+
+      const decided = await erp<{ id: string }>(`/hr/leave-requests/${created.body.id}/decision`, {
+        method: 'POST',
+        body: { decision: 'APPROVED', note: 'ok' },
+      });
+      expect([200, 201]).toContain(decided.status);
+
+      const list = await erp<{ items: Array<{ id: string; approvedByNameEn: string | null; approvedByNameAr: string | null }> }>(
+        `/hr/employees/${employeeId}/file/leave`,
+      );
+      const row = list.body.items.find((i) => i.id === created.body.id);
+      expect(row).toBeDefined();
+      // The decision is attributed to a real principal, not left blank.
+      expect(row!.approvedByNameEn ?? row!.approvedByNameAr).toBeTruthy();
+    });
+
+    it('returns the overtime hours frozen on each payslip', async () => {
+      const res = await erp<{ items: Array<{ overtimeHours: number | null }> }>(
+        `/hr/employees/${employeeId}/file/payroll`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.items.length).toBeGreaterThan(0);
+      // Overtime is a snapshot field: a number of hundredths, or null when the
+      // payslip predates the field.
+      for (const item of res.body.items) {
+        expect(item.overtimeHours === null || typeof item.overtimeHours === 'number').toBe(true);
+      }
+    });
+
     it('returns tab counts that agree with the tab endpoints', async () => {
       const counts = await erp<{ payslips: number; penalties: number; bonuses: number }>(
         `/hr/employees/${employeeId}/file/counts`,

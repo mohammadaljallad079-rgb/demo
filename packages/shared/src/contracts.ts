@@ -1565,6 +1565,8 @@ export interface EmployeePayslipDto {
   grossMinor: number;
   netMinor: number;
   advanceDeductionMinor: number;
+  /** Overtime frozen into the payslip snapshot, in hundredths of an hour. */
+  overtimeHours: number | null;
   currency: string;
   lines: PayslipLineDto[];
 }
@@ -1598,6 +1600,8 @@ export interface EmployeeLeaveRecordDto {
   reason: string | null;
   decisionNote: string | null;
   decidedAt: string | null;
+  approvedByNameEn: string | null;
+  approvedByNameAr: string | null;
 }
 
 export interface EmployeeLeaveBalanceDto {
@@ -1700,6 +1704,18 @@ export interface EmployeeFileReports {
       status: string;
     }>;
     summary: { requestCount: number; approvedDays: number; pendingCount: number };
+    balances: Array<{
+      id: string;
+      leaveTypeCode: string;
+      leaveTypeNameEn: string;
+      leaveTypeNameAr: string;
+      year: number;
+      entitledDays: number;
+      accruedDays: number;
+      usedDays: number;
+      pendingDays: number;
+      remainingDays: number;
+    }>;
   };
   penalties: {
     records: Array<{

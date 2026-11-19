@@ -17,8 +17,9 @@ import { useAuth } from '@/lib/auth-context';
 import { useUi } from '@/lib/ui-context';
 import { useAsync } from '@/lib/hooks';
 import { useFormAttachments } from '@/lib/use-form-attachments';
-import { money, toMinorInput } from '@/lib/erp-format';
-import { exportCsv, printDocument } from '@/lib/print';
+import { minorToText, money, toMinorInput } from '@/lib/erp-format';
+import { printDocument } from '@/lib/print';
+import { exportXlsx } from '@/lib/xlsx';
 import { AttachmentField } from '@/components/attachments';
 import { RecordPreview } from '@/components/record-preview';
 import { Icon } from '@/components/icons';
@@ -660,20 +661,35 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
   };
 
   const exportLedger = () => {
-    exportCsv(
-      `payslips-${employeeCode}`,
-      [t('hr.file.runNumber'), t('hr.file.periodFrom'), t('hr.file.periodTo'), t('hr.file.basicSalary'), t('erp.hr.allowances'), t('erp.hr.deductions'), t('erp.hr.net'), t('hr.file.paymentStatus')],
-      items.map((s) => [
-        s.runNumber,
-        s.periodStart.slice(0, 10),
-        s.periodEnd.slice(0, 10),
-        money(s.basicMinor, s.currency),
-        money(s.allowancesMinor, s.currency),
-        money(s.deductionsMinor, s.currency),
-        money(s.netMinor, s.currency),
-        s.paymentStatus,
-      ]),
-    );
+    exportXlsx(`payslips-${employeeCode}`, [
+      {
+        name: t('hr.file.tab.payroll'),
+        headers: [
+          t('hr.file.runNumber'),
+          t('hr.file.periodFrom'),
+          t('hr.file.periodTo'),
+          t('hr.file.basicSalary'),
+          t('erp.hr.allowances'),
+          t('erp.hr.deductions'),
+          t('erp.hr.net'),
+          t('hr.file.overtimeHours'),
+          t('hr.file.paymentStatus'),
+          t('hr.file.paidAt'),
+        ],
+        rows: items.map((s) => [
+          s.runNumber,
+          s.periodStart.slice(0, 10),
+          s.periodEnd.slice(0, 10),
+          minorToText(s.basicMinor),
+          minorToText(s.allowancesMinor),
+          minorToText(s.deductionsMinor),
+          minorToText(s.netMinor),
+          s.overtimeHours === null ? '' : (s.overtimeHours / 100).toFixed(2),
+          s.paymentStatus,
+          s.paidAt?.slice(0, 10) ?? '',
+        ]),
+      },
+    ]);
   };
 
   return (
@@ -727,6 +743,7 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
                 <th>{t('erp.hr.allowances')}</th>
                 <th>{t('erp.hr.deductions')}</th>
                 <th>{t('erp.hr.net')}</th>
+                <th>{t('hr.file.overtimeHours')}</th>
                 <th>{t('hr.file.paymentStatus')}</th>
                 <th>{t('hr.file.paidAt')}</th>
                 <th>{t('common.actions')}</th>
@@ -741,6 +758,7 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
                   <td className="tabular-nums text-[12.5px]">{money(s.allowancesMinor, s.currency)}</td>
                   <td className="tabular-nums text-[12.5px]">{money(s.deductionsMinor, s.currency)}</td>
                   <td className="tabular-nums text-[12.5px] font-semibold">{money(s.netMinor, s.currency)}</td>
+                  <td className="tabular-nums text-[12.5px]">{s.overtimeHours === null ? '—' : (s.overtimeHours / 100).toFixed(2)}</td>
                   <td><StatusBadge status={s.paymentStatus} label={s.paymentStatus} /></td>
                   <td className="text-[12.5px]">{s.paidAt?.slice(0, 10) ?? '—'}</td>
                   <td>
@@ -780,6 +798,7 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
                 { label: t('erp.hr.allowances'), value: money(preview.allowancesMinor, preview.currency) },
                 { label: t('erp.hr.deductions'), value: money(preview.deductionsMinor, preview.currency) },
                 { label: t('erp.hr.net'), value: money(preview.netMinor, preview.currency) },
+                { label: t('hr.file.overtimeHours'), value: preview.overtimeHours === null ? '—' : (preview.overtimeHours / 100).toFixed(2) },
                 { label: t('hr.file.paymentStatus'), value: preview.paymentStatus },
                 { label: t('hr.file.paidAt'), value: preview.paidAt?.slice(0, 10) ?? '—' },
               ]
@@ -818,6 +837,7 @@ function LeaveTab({ employeeId }: { employeeId: string }) {
             { label: t('erp.hr.days'), value: (row.days / 100).toFixed(2) },
             { label: t('common.status'), value: row.status },
             { label: t('hr.file.reason'), value: row.reason ?? '—' },
+            { label: t('hr.file.approvedBy'), value: (locale === 'ar' ? row.approvedByNameAr : row.approvedByNameEn) ?? '—' },
             { label: t('common.notes'), value: row.decisionNote ?? '—' },
           ],
         },
@@ -922,6 +942,8 @@ function LeaveTab({ employeeId }: { employeeId: string }) {
                 { label: t('hr.file.paid'), value: preview.isPaid ? t('common.yes') : t('common.no') },
                 { label: t('common.status'), value: preview.status },
                 { label: t('hr.file.reason'), value: preview.reason ?? '—' },
+                { label: t('hr.file.approvedBy'), value: (locale === 'ar' ? preview.approvedByNameAr : preview.approvedByNameEn) ?? '—' },
+                { label: t('hr.file.decidedAt'), value: preview.decidedAt?.slice(0, 10) ?? '—' },
                 { label: t('common.notes'), value: preview.decisionNote ?? '—' },
               ]
             : []
@@ -1607,28 +1629,60 @@ function ReportsTab({
   const hours = (minutes: number) => (minutes / 60).toFixed(2);
 
   const exportReport = () => {
-    exportCsv(`employee-report-${employeeCode}`, [t('hr.file.reportSection'), t('common.name'), t('common.value')], [
-      [t('hr.file.attendanceSummary'), t('hr.file.recordedDays'), String(d.attendance.summary.recordedDays)],
-      [t('hr.file.attendanceSummary'), t('erp.hr.present'), String(d.attendance.summary.presentDays)],
-      [t('hr.file.attendanceSummary'), t('erp.hr.late'), String(d.attendance.summary.lateDays)],
-      [t('hr.file.attendanceSummary'), t('erp.hr.absent'), String(d.attendance.summary.absentDays)],
-      [t('hr.file.attendanceSummary'), t('hr.file.workedHours'), hours(d.attendance.summary.workedMinutes)],
-      [t('hr.file.attendanceSummary'), t('hr.file.overtimeHours'), hours(d.attendance.summary.overtimeMinutes)],
-      [t('hr.file.leaveSummary'), t('erp.hr.requests'), String(d.leave.summary.requestCount)],
-      [t('hr.file.leaveSummary'), t('erp.hr.approved'), (d.leave.summary.approvedDays / 100).toFixed(2)],
-      [t('hr.file.leaveSummary'), t('hr.file.pending'), String(d.leave.summary.pendingCount)],
-      [t('hr.file.penaltiesSummary'), t('hr.file.actionType'), String(d.penalties.summary.count)],
-      ...(d.penalties.summary.totalMinor !== undefined
-        ? [[t('hr.file.penaltiesSummary'), t('hr.file.bonusAmount'), money(d.penalties.summary.totalMinor)]]
-        : []),
-      ...(d.payroll.visible
-        ? [
-            [t('hr.file.payrollTotals'), t('hr.file.basicSalary'), money(d.payroll.totals.grossMinor, d.payroll.totals.currency)],
-            [t('hr.file.payrollTotals'), t('erp.hr.allowances'), money(d.payroll.totals.allowancesMinor, d.payroll.totals.currency)],
-            [t('hr.file.payrollTotals'), t('erp.hr.deductions'), money(d.payroll.totals.deductionsMinor, d.payroll.totals.currency)],
-            [t('hr.file.payrollTotals'), t('erp.hr.net'), money(d.payroll.totals.netMinor, d.payroll.totals.currency)],
-          ]
-        : []),
+    exportXlsx(`employee-report-${employeeCode}`, [
+      {
+        name: t('hr.file.tab.reports'),
+        headers: [t('hr.file.reportSection'), t('common.name'), t('common.value')],
+        rows: [
+          [t('hr.file.attendanceSummary'), t('hr.file.recordedDays'), String(d.attendance.summary.recordedDays)],
+          [t('hr.file.attendanceSummary'), t('erp.hr.present'), String(d.attendance.summary.presentDays)],
+          [t('hr.file.attendanceSummary'), t('erp.hr.late'), String(d.attendance.summary.lateDays)],
+          [t('hr.file.attendanceSummary'), t('erp.hr.absent'), String(d.attendance.summary.absentDays)],
+          [t('hr.file.attendanceSummary'), t('hr.file.workedHours'), hours(d.attendance.summary.workedMinutes)],
+          [t('hr.file.attendanceSummary'), t('hr.file.overtimeHours'), hours(d.attendance.summary.overtimeMinutes)],
+          [t('hr.file.leaveSummary'), t('erp.hr.requests'), String(d.leave.summary.requestCount)],
+          [t('hr.file.leaveSummary'), t('erp.hr.approved'), (d.leave.summary.approvedDays / 100).toFixed(2)],
+          [t('hr.file.leaveSummary'), t('hr.file.pending'), String(d.leave.summary.pendingCount)],
+          ...d.leave.balances.map((b) => [
+            t('hr.file.leaveBalances'),
+            `${b.leaveTypeNameEn} (${b.year})`,
+            `${(b.remainingDays / 100).toFixed(2)} / ${((b.entitledDays + b.accruedDays) / 100).toFixed(2)}`,
+          ]),
+          [t('hr.file.penaltiesSummary'), t('hr.file.actionType'), String(d.penalties.summary.count)],
+          ...(d.penalties.summary.totalMinor !== undefined
+            ? [[t('hr.file.penaltiesSummary'), t('hr.file.bonusAmount'), minorToText(d.penalties.summary.totalMinor)]]
+            : []),
+          ...(d.payroll.visible
+            ? [
+                [t('hr.file.payrollTotals'), t('hr.file.basicSalary'), minorToText(d.payroll.totals.grossMinor)],
+                [t('hr.file.payrollTotals'), t('erp.hr.allowances'), minorToText(d.payroll.totals.allowancesMinor)],
+                [t('hr.file.payrollTotals'), t('erp.hr.deductions'), minorToText(d.payroll.totals.deductionsMinor)],
+                [t('hr.file.payrollTotals'), t('erp.hr.net'), minorToText(d.payroll.totals.netMinor)],
+              ]
+            : []),
+        ],
+      },
+      {
+        name: t('hr.file.attendanceReport'),
+        headers: [t('common.date'), t('common.status'), t('hr.file.workedHours'), t('hr.file.overtimeHours')],
+        rows: d.attendance.records.map((r) => [
+          r.workDate.slice(0, 10),
+          r.status,
+          hours(r.workedMinutes),
+          hours(r.overtimeMinutes),
+        ]),
+      },
+      {
+        name: t('hr.file.tab.leave'),
+        headers: [t('erp.hr.leaveType'), t('erp.reports.from'), t('erp.reports.to'), t('erp.hr.days'), t('common.status')],
+        rows: d.leave.records.map((r) => [
+          r.leaveTypeNameEn,
+          r.startDate.slice(0, 10),
+          r.endDate.slice(0, 10),
+          (r.days / 100).toFixed(2),
+          r.status,
+        ]),
+      },
     ]);
   };
 
@@ -1745,6 +1799,38 @@ function ReportsTab({
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
+        <Card data-testid="report-leave-balances">
+          <div className="border-b border-[var(--border)] p-4">
+            <p className="oryx-panel-title m-0">{t('hr.file.leaveBalances')}</p>
+          </div>
+          {d.leave.balances.length === 0 ? (
+            <EmptyState title={t('hr.file.noRecords')} />
+          ) : (
+            <TableShell>
+              <thead>
+                <tr>
+                  <th>{t('erp.hr.leaveType')}</th>
+                  <th>{t('hr.file.entitled')}</th>
+                  <th>{t('hr.file.used')}</th>
+                  <th>{t('hr.file.pending')}</th>
+                  <th>{t('hr.file.remaining')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.leave.balances.map((b) => (
+                  <tr key={b.id} data-testid={`report-leave-balance-${b.id}`}>
+                    <td className="text-[12.5px]">{b.leaveTypeNameEn}</td>
+                    <td className="tabular-nums text-[12.5px]">{((b.entitledDays + b.accruedDays) / 100).toFixed(2)}</td>
+                    <td className="tabular-nums text-[12.5px]">{(b.usedDays / 100).toFixed(2)}</td>
+                    <td className="tabular-nums text-[12.5px]">{(b.pendingDays / 100).toFixed(2)}</td>
+                    <td className="tabular-nums text-[12.5px] font-semibold">{(b.remainingDays / 100).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableShell>
+          )}
+        </Card>
+
         <Card data-testid="report-leave-records">
           <div className="border-b border-[var(--border)] p-4">
             <p className="oryx-panel-title m-0">{t('hr.file.leaveRecords')}</p>

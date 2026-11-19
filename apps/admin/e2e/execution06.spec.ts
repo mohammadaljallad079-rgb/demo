@@ -429,6 +429,70 @@ test.describe('Execution 06 — attachments and employee file', () => {
     await expect(page.getByTestId('file-personal-card')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
   });
+  test('17. the reports tab shows leave balances and overtime, and exports a real workbook', async ({ page }) => {
+    const employee = await createEmployee(token, 'report');
+    fixture.employeeId = employee.id;
+    const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+    // A leave balance for the current year, so the tab has a row to read.
+    const types = await fetch(`${API}/hr/leave-types`, { headers: H });
+    expect(types.ok, `leave types failed with ${types.status}`).toBe(true);
+    const typeList = (await types.json()) as { items: Array<{ id: string }> };
+    expect(typeList.items.length).toBeGreaterThan(0);
+    const balance = await fetch(`${API}/hr/leave-balances/adjust`, {
+      method: 'POST',
+      headers: H,
+      body: JSON.stringify({
+        employeeId: employee.id,
+        leaveTypeId: typeList.items[0].id,
+        year: new Date().getUTCFullYear(),
+        entitledDays: 2100,
+        accruedDays: 0,
+      }),
+    });
+    expect(balance.ok, `balance adjust failed with ${balance.status}`).toBe(true);
+
+    // Two attendance days, one carrying overtime, so the report has hours.
+    for (const [date, overtime] of [
+      ['2026-02-02', 0],
+      ['2026-02-03', 90],
+    ] as const) {
+      const attendance = await fetch(`${API}/hr/attendance`, {
+        method: 'POST',
+        headers: H,
+        body: JSON.stringify({
+          employeeId: employee.id,
+          workDate: date,
+          checkInAt: `${date}T08:00:00.000Z`,
+          checkOutAt: `${date}T17:00:00.000Z`,
+          overtimeMinutes: overtime,
+          status: 'PRESENT',
+        }),
+      });
+      expect(attendance.ok, `attendance failed with ${attendance.status}`).toBe(true);
+    }
+
+    await page.goto(`/hr/employees/${employee.id}`);
+    await page.getByTestId('file-tab-reports').click();
+    await expect(page.getByTestId('file-reports')).toBeVisible({ timeout: 20_000 });
+
+    // The balance row is rendered from the database, not hard-coded.
+    await expect(page.getByTestId('report-leave-balances')).toBeVisible();
+    await expect(page.getByTestId('report-leave-balances')).toContainText('21.00');
+
+    // 90 overtime minutes are shown as 1.50 hours in the attendance summary.
+    await expect(page.getByTestId('report-attendance-records')).toContainText('1.50');
+    await expect(page.getByTestId('report-attendance-records')).toContainText('2026-02-03');
+
+    // The export is a real .xlsx download, not a CSV rename.
+    const download = page.waitForEvent('download');
+    await page.getByTestId('report-export').click();
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(/\.xlsx$/);
+    const path = await file.path();
+    expect(path).toBeTruthy();
+  });
+
   test('16. the payroll tab prints the chosen window and the full ledger separately', async ({ page }) => {
     const employee = await createEmployee(token, 'ledger');
     fixture.employeeId = employee.id;

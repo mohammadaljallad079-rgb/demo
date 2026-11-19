@@ -127,8 +127,8 @@ function SupportPageInner() {
         onClose={() => setPreviewOf(null)}
         title={previewOf ? String(locale === 'ar' ? previewOf.companyNameAr : previewOf.companyNameEn) : ''}
         subtitle={previewOf ? String(previewOf.reason) : undefined}
-        entityType="COMPANY"
-        entityId={previewOf ? String(previewOf.companyId ?? '') || null : null}
+        entityType="SUPPORT_SESSION"
+        entityId={previewOf ? String(previewOf.id ?? '') || null : null}
         testId="support-preview"
         fields={
           previewOf

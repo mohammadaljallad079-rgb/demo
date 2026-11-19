@@ -145,8 +145,8 @@ export default function SubscriptionsPage() {
         onClose={() => setPreviewOf(null)}
         title={previewOf ? (locale === 'ar' ? previewOf.companyNameAr : previewOf.companyNameEn) : ''}
         subtitle={previewOf ? `${locale === 'ar' ? previewOf.planNameAr : previewOf.planNameEn} · ${previewOf.currency} ${previewOf.price.toLocaleString()}` : undefined}
-        entityType="COMPANY"
-        entityId={previewOf?.companyId ?? null}
+        entityType="SUBSCRIPTION"
+        entityId={previewOf?.id ?? null}
         testId="subscription-preview"
         fields={
           previewOf

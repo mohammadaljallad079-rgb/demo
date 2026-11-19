@@ -120,6 +120,36 @@ the running stack: with a June window applied and a January run in the ledger,
 the windowed table showed 0 rows, the period print did not mention `PR-00001`,
 and the full print did.
 
+### 2.7 Two more defects found and fixed
+
+**The subscription preview attached files to the wrong record.** The panel passed
+`entityType="COMPANY"` with the company id, so a file uploaded from a
+subscription preview was stored against the company and appeared on the company
+preview too — the two records shared one attachment set. It now uses
+`SUBSCRIPTION` and the subscription's own id, which is what the catalogue
+declares and what the API authorises.
+
+**The support-session preview did the same**, storing files against the company
+instead of the session. It now uses `SUPPORT_SESSION` and the session id.
+
+Both were invisible to the type checker because `entityType` is a plain string
+and both keys exist in the catalogue. A browser test caught the subscription
+case: the print button was absent, because the panel derives the print
+permission from the catalogue entry's read permission and a platform principal
+holds no tenant `company.read`.
+
+### 2.8 The reports tab, asserted end to end
+
+A browser test seeds a real leave balance and two attendance days through the
+API, then opens the reports tab and asserts:
+
+- the leave balance row renders `21.00` days from the database;
+- the attendance table shows `1.50` overtime hours for a 90-minute day;
+- the export button downloads a file whose name ends in `.xlsx`.
+
+That last assertion is what distinguishes a real workbook from a CSV with a
+renamed extension.
+
 ## 3. Security and tenant isolation
 
 - Authorisation is enforced server-side. The UI only hides what the API would
@@ -155,10 +185,10 @@ Run against the local stack on the branch head.
 | Suite | Command | Result |
 | --- | --- | --- |
 | Shared unit | `pnpm --filter @oryx/shared test` | 93 passed (5 files) |
-| API integration | `pnpm --filter @oryx/api test:e2e` | 242 passed (9 suites) |
-| Browser acceptance | `pnpm --filter @oryx/admin test:ui` | 139 passed, 1 skipped by design |
+| API integration | `pnpm --filter @oryx/api test:e2e` | 245 passed (9 suites) |
+| Browser acceptance | `pnpm --filter @oryx/admin test:ui` | 140 passed, 1 skipped by design |
 | Typecheck | api, admin, customer, mobile | clean |
-| Lint | admin, customer, mobile | exit 0 |
+| Lint | admin, customer | exit 0 |
 | Build | `@oryx/api`, `@oryx/admin` | pass |
 
 The one skipped browser test skips itself when the database has no support

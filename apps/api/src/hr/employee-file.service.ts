@@ -219,6 +219,7 @@ export class EmployeeFileService {
       grossMinor: p.grossMinor,
       netMinor: p.netMinor,
       advanceDeductionMinor: p.advanceDeductionMinor,
+      overtimeHours: readOvertimeHours(p.snapshot),
       currency: p.currency,
       lines: p.lines.map((l) => ({
         id: l.id,
@@ -264,6 +265,13 @@ export class EmployeeFileService {
         orderBy: { leaveType: { code: 'asc' } },
       }),
     ]);
+
+    const approverIds = [...new Set(requests.map((r) => r.approvedById).filter((x): x is string => Boolean(x)))];
+    const approvers = approverIds.length
+      ? await this.prisma.user.findMany({ where: { id: { in: approverIds } }, select: { id: true, fullNameEn: true, fullNameAr: true } })
+      : [];
+    const approverName = new Map(approvers.map((u) => [u.id, u]));
+
     return {
       items: requests.map((r) => ({
         id: r.id,
@@ -279,6 +287,8 @@ export class EmployeeFileService {
         reason: r.reason,
         decisionNote: r.decisionNote,
         decidedAt: r.decidedAt?.toISOString() ?? null,
+        approvedByNameEn: r.approvedById ? (approverName.get(r.approvedById)?.fullNameEn ?? null) : null,
+        approvedByNameAr: r.approvedById ? (approverName.get(r.approvedById)?.fullNameAr ?? null) : null,
       })),
       balances: balances.map((b) => ({
         id: b.id,
@@ -548,7 +558,7 @@ export class EmployeeFileService {
     const to = query.to ? new Date(query.to) : new Date();
     if (to < from) throw badRequest(ERROR_CODES.VALIDATION_FAILED, 'End date must not precede the start date.');
 
-    const [attendance, leaveRequests, penalties, bonuses, payslips] = await Promise.all([
+    const [attendance, leaveRequests, leaveBalances, penalties, bonuses, payslips] = await Promise.all([
       this.prisma.attendanceRecord.findMany({
         where: { companyId, employeeId, workDate: { gte: from, lte: to } },
         orderBy: { workDate: 'asc' },
@@ -557,6 +567,11 @@ export class EmployeeFileService {
         where: { companyId, employeeId, startDate: { lte: to }, endDate: { gte: from } },
         include: { leaveType: { select: { code: true, nameEn: true, nameAr: true } } },
         orderBy: { startDate: 'asc' },
+      }),
+      this.prisma.leaveBalance.findMany({
+        where: { companyId, employeeId, year: to.getUTCFullYear() },
+        include: { leaveType: { select: { code: true, nameEn: true, nameAr: true } } },
+        orderBy: { leaveType: { code: 'asc' } },
       }),
       this.prisma.employeePenalty.findMany({
         where: { companyId, employeeId, effectiveDate: { gte: from, lte: to } },
@@ -628,6 +643,18 @@ export class EmployeeFileService {
           approvedDays: approvedLeaveDays,
           pendingCount: leaveRequests.filter((l) => l.status === 'SUBMITTED').length,
         },
+        balances: leaveBalances.map((b) => ({
+          id: b.id,
+          leaveTypeCode: b.leaveType.code,
+          leaveTypeNameEn: b.leaveType.nameEn,
+          leaveTypeNameAr: b.leaveType.nameAr,
+          year: b.year,
+          entitledDays: b.entitledDays,
+          accruedDays: b.accruedDays,
+          usedDays: b.usedDays,
+          pendingDays: b.pendingDays,
+          remainingDays: b.entitledDays + b.accruedDays - b.usedDays - b.pendingDays,
+        })),
       },
       penalties: {
         records: penalties.map((p) => ({
@@ -719,4 +746,15 @@ function payslipStatus(runStatus: string): 'DRAFT' | 'APPROVED' | 'PAID' | 'LOCK
     default:
       return 'DRAFT';
   }
+}
+
+/**
+ * Overtime hours were frozen into the payslip snapshot at run time, in
+ * hundredths of an hour. A payslip created before the field existed has no
+ * value, so the file reports null rather than inventing zero.
+ */
+function readOvertimeHours(snapshot: unknown): number | null {
+  if (!snapshot || typeof snapshot !== 'object') return null;
+  const value = (snapshot as Record<string, unknown>).overtimeHours;
+  return typeof value === 'number' ? value : null;
 }
