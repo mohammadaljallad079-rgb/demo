@@ -43,6 +43,21 @@ try {
     where: { OR: PREFIXES.map((p) => ({ fileName: { startsWith: p } })) },
   });
 
+  // Payroll fixtures: a run references its period with onDelete: Restrict and
+  // has no delete route, so the run goes before the period. Payslips cascade
+  // from the run.
+  const fixturePeriods = await prisma.payrollPeriod.findMany({
+    where: { OR: PREFIXES.map((p) => ({ code: { startsWith: p } })) },
+    select: { id: true },
+  });
+  const periodIds = fixturePeriods.map((p) => p.id);
+  const payrollRuns = periodIds.length
+    ? await prisma.payrollRun.deleteMany({ where: { periodId: { in: periodIds } } })
+    : { count: 0 };
+  const payrollPeriods = periodIds.length
+    ? await prisma.payrollPeriod.deleteMany({ where: { id: { in: periodIds } } })
+    : { count: 0 };
+
   // Records the suites create alongside an employee, matched by their own text.
   const workOrders = await prisma.workOrder.deleteMany({
     where: { OR: PREFIXES.map((p) => ({ title: { startsWith: p } })) },
@@ -86,7 +101,7 @@ try {
   }
 
   console.log(
-    `UI fixtures purged: ${employeeIds.length} employees, ${attachments.count} attachments, ${workOrders.count} work orders, ${bookings.count} maintenance bookings, ${payments.length} payments.`,
+    `UI fixtures purged: ${employeeIds.length} employees, ${attachments.count} attachments, ${workOrders.count} work orders, ${bookings.count} maintenance bookings, ${payments.length} payments, ${payrollRuns.count} payroll runs, ${payrollPeriods.count} payroll periods.`,
   );
 } finally {
   await prisma.$disconnect();

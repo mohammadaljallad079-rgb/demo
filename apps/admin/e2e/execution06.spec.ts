@@ -429,6 +429,63 @@ test.describe('Execution 06 — attachments and employee file', () => {
     await expect(page.getByTestId('file-personal-card')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
   });
+  test('16. the payroll tab prints the chosen window and the full ledger separately', async ({ page }) => {
+    const employee = await createEmployee(token, 'ledger');
+    fixture.employeeId = employee.id;
+
+    // A real run, so the ledger has a row the window can exclude.
+    await fetch(`${API}/hr/salary-structures`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employeeId: employee.id, effectiveFrom: '2024-01-01', basicMinor: 500000, components: [] }),
+    });
+    const period = await fetch(`${API}/hr/payroll-periods`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: `${PREFIX}-${Date.now()}`,
+        nameEn: 'E06 ledger period',
+        nameAr: 'فترة اختبار',
+        startDate: '2026-01-01',
+        endDate: '2026-01-31',
+      }),
+    });
+    expect(period.ok, `period creation failed with ${period.status}`).toBe(true);
+    const periodBody = (await period.json()) as { id: string };
+    const run = await fetch(`${API}/hr/payroll-runs`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ periodId: periodBody.id }),
+    });
+    expect(run.ok, `run creation failed with ${run.status}`).toBe(true);
+    const runBody = (await run.json()) as { runNumber: string };
+
+    await page.goto(`/hr/employees/${employee.id}`);
+    await page.getByTestId('file-tab-payroll').click();
+    await expect(page.getByTestId('file-payroll')).toBeVisible({ timeout: 20_000 });
+
+    // Narrow the window so the January run falls outside it.
+    await page.getByTestId('payroll-from').fill('2026-06-01');
+    await page.getByTestId('payroll-to').fill('2026-06-30');
+    await page.getByTestId('payroll-apply').click();
+    await expect(page.getByText(runBody.runNumber)).toHaveCount(0, { timeout: 20_000 });
+
+    const windowPopup = page.waitForEvent('popup');
+    await page.getByTestId('payroll-print-period').click();
+    const windowed = await windowPopup;
+    await windowed.waitForLoadState();
+    expect(await windowed.locator('body').innerText()).not.toContain(runBody.runNumber);
+    await windowed.close();
+
+    // The full ledger ignores the window, which is the difference between the
+    // two buttons.
+    const fullPopup = page.waitForEvent('popup');
+    await page.getByTestId('payroll-print-full').click();
+    const full = await fullPopup;
+    await full.waitForLoadState();
+    expect(await full.locator('body').innerText()).toContain(runBody.runNumber);
+    await full.close();
+  });
 });
 
 /**

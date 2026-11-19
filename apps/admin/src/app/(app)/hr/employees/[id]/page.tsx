@@ -573,6 +573,9 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
   const [applied, setApplied] = useState<{ from?: string; to?: string }>({});
   const [preview, setPreview] = useState<EmployeePayslipDto | null>(null);
   const ledger = useAsync(() => api.employeeFilePayroll(employeeId, applied), [employeeId, applied.from, applied.to]);
+  // Printing must stay synchronous inside the click handler or the popup is
+  // blocked, so the unfiltered ledger is loaded alongside the windowed one.
+  const fullLedger = useAsync(() => api.employeeFilePayroll(employeeId, {}), [employeeId]);
 
   if (ledger.error) {
     return (
@@ -619,7 +622,8 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
   };
 
   const printLedger = (onlyWindow: boolean) => {
-    const rows = onlyWindow ? items : items;
+    const source = onlyWindow ? ledger.data : fullLedger.data;
+    if (!source) return;
     const ok = printDocument({
       title: `${t('hr.file.tab.payroll')} — ${employeeName}`,
       subtitle:
@@ -631,10 +635,10 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
         {
           heading: t('hr.file.payrollTotals'),
           fields: [
-            { label: t('hr.file.basicSalary'), value: money(totals.basicMinor, currency) },
-            { label: t('erp.hr.allowances'), value: money(totals.allowancesMinor, currency) },
-            { label: t('erp.hr.deductions'), value: money(totals.deductionsMinor, currency) },
-            { label: t('erp.hr.net'), value: money(totals.netMinor, currency) },
+            { label: t('hr.file.basicSalary'), value: money(source.totals.basicMinor, source.totals.currency) },
+            { label: t('erp.hr.allowances'), value: money(source.totals.allowancesMinor, source.totals.currency) },
+            { label: t('erp.hr.deductions'), value: money(source.totals.deductionsMinor, source.totals.currency) },
+            { label: t('erp.hr.net'), value: money(source.totals.netMinor, source.totals.currency) },
           ],
           table: {
             columns: [
@@ -646,7 +650,7 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
               { header: t('erp.hr.net'), value: (r) => money(Number(r.netMinor), String(r.currency)), align: 'end' },
               { header: t('hr.file.paymentStatus'), value: (r) => String(r.paymentStatus) },
             ],
-            rows: rows as unknown as Array<Record<string, unknown>>,
+            rows: source.items as unknown as Array<Record<string, unknown>>,
           },
         },
       ],
