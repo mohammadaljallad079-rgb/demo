@@ -14,6 +14,21 @@ changes and one additive field. No schema migration, no destructive operation.
 | `apps/admin` employee file | Worked-hours column in payroll table, preview, print and Excel | None — presentation |
 | `apps/admin` reports export | Adds penalties and bonuses sheets (3 → 5 sheets) | None — new sheets only |
 
+## What is not in this branch
+
+The wider request asked for two things this branch does not deliver. Stating
+them here so no one reads the rest of the plan as covering them:
+
+- **A real PDF exporter.** Reports print through `printDocument`, which opens a
+  browser print document; the operator picks "Save as PDF" in the print dialog.
+  There is no generated `.pdf` file server-side or client-side, and no PDF
+  library is a dependency. Excel export is a real `.xlsx` file.
+- **Print and download are not permission-gated in the UI.** The API gates the
+  data and the attachment bytes, so a caller without the read right cannot
+  obtain them; but the print and download buttons are not individually hidden by
+  a print/download permission, because no such permission exists in the
+  catalogue.
+
 ## Pre-deployment checks
 
 1. **Build order.** `@oryx/shared` and `@oryx/database` compile before the apps,
