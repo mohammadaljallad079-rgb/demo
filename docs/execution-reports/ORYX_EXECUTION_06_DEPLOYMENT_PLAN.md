@@ -99,7 +99,7 @@ them here so no one reads the rest of the plan as covering them:
 
 ## Merge sequence
 
-The branch is 11 commits ahead of `main` with no merge conflicts expected, but
+The branch is 13 commits ahead of `main` with no merge conflicts expected, but
 merge it as a merge commit rather than a squash: the migrations are dated and
 ordered, and a squash hides which commit introduced which DDL.
 
