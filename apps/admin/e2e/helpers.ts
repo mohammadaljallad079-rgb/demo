@@ -137,11 +137,11 @@ export async function apiToken(
         (mac[offset + 3] & 0xff);
       const code = String(binary % 1_000_000).padStart(6, '0');
 
-      const csrf = decodeURIComponent(document.cookie.match(/oryx_csrf=([^;]*)/)?.[1] ?? '');
+      const csrfForVerify = csrf();
       const verify = await fetch(`${api}/auth/mfa/verify-login`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'x-oryx-csrf': csrf },
+        headers: { 'Content-Type': 'application/json', 'x-oryx-csrf': csrfForVerify },
         body: JSON.stringify({ challengeToken: body.challengeToken, code }),
       });
       const verified = (await verify.json()) as { accessToken?: string };
