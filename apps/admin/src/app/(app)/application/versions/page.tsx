@@ -2,9 +2,13 @@
 
 import { PermissionGate } from '@/components/permission-gate';
 import { useState } from 'react';
+import type { AppVersionDto } from '@oryx/shared';
 import { api } from '@/lib/api';
 import { useUi } from '@/lib/ui-context';
 import { useAsync } from '@/lib/hooks';
+import { useFormAttachments } from '@/lib/use-form-attachments';
+import { AttachmentField } from '@/components/attachments';
+import { RecordPreview } from '@/components/record-preview';
 import { Icon } from '@/components/icons';
 import {
   Badge,
@@ -33,6 +37,8 @@ function AppVersionsPageInner() {
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewOf, setPreviewOf] = useState<AppVersionDto | null>(null);
+  const attach = useFormAttachments();
 
   return (
     <div className="flex flex-col gap-5" data-testid="app-versions-page">
@@ -83,6 +89,7 @@ function AppVersionsPageInner() {
                 <th>{t('app.build')}</th>
                 <th>{t('app.minSupported')}</th>
                 <th>{t('common.status')}</th>
+                <th>{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -99,12 +106,39 @@ function AppVersionsPageInner() {
                       {v.isActive ? t('common.active') : t('common.inactive')}
                     </Badge>
                   </td>
+                  <td>
+                    <Button size="sm" onClick={() => setPreviewOf(v)} data-testid={`preview-version-${String(v.version)}`}>
+                      {t('attach.preview')}
+                    </Button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </TableShell>
         )}
       </Card>
+
+      <RecordPreview
+        open={previewOf !== null}
+        onClose={() => setPreviewOf(null)}
+        title={previewOf ? `${previewOf.platform} ${previewOf.version}` : ''}
+        subtitle={previewOf ? `build ${previewOf.buildNumber}` : undefined}
+        entityType="APP_VERSION"
+        entityId={previewOf?.id ?? null}
+        testId="app-version-preview"
+        fields={
+          previewOf
+            ? [
+                { label: t('app.platform'), value: previewOf.platform },
+                { label: t('app.version'), value: previewOf.version },
+                { label: t('app.build'), value: previewOf.buildNumber },
+                { label: t('app.minSupported'), value: previewOf.minSupportedVersion },
+                { label: t('common.status'), value: previewOf.isActive ? t('common.active') : t('common.inactive') },
+                { label: t('app.releaseNotes'), value: previewOf.releaseNotes ?? '—' },
+              ]
+            : []
+        }
+      />
 
       <Modal
         open={open}
@@ -120,7 +154,9 @@ function AppVersionsPageInner() {
                 setBusy(true);
                 setError(null);
                 try {
-                  await api.upsertAppVersion(form);
+                  const saved = await api.upsertAppVersion(form);
+                  await attach.flush(String(saved.id));
+                  attach.reset();
                   setOpen(false);
                   await versions.reload();
                 } catch (err) {
@@ -191,6 +227,19 @@ function AppVersionsPageInner() {
           />
           {t('common.active')}
         </label>
+        <div className="mt-4 border-t border-[var(--border)] pt-3">
+          <AttachmentField
+            entityType="APP_VERSION"
+            entityId={null}
+            value={attach.items}
+            onChange={attach.setItems}
+            registerFlush={attach.register}
+            canWrite
+            label={t('app.versionAttachments')}
+            hint={t('app.versionAttachmentsHint')}
+            testId="app-version-attachments"
+          />
+        </div>
       </Modal>
     </div>
   );

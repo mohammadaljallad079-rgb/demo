@@ -7,6 +7,9 @@ import { api } from '@/lib/api';
 import { useUi } from '@/lib/ui-context';
 import { useAsync } from '@/lib/hooks';
 import { Icon } from '@/components/icons';
+import { RecordPreview } from '@/components/record-preview';
+import { AttachmentField } from '@/components/attachments';
+import { useFormAttachments } from '@/lib/use-form-attachments';
 import {
   Badge,
   Button,
@@ -30,6 +33,8 @@ function WebsiteCmsPageInner() {
   const [editingBanner, setEditingBanner] = useState<CmsBannerDto | null>(null);
   const [creatingPage, setCreatingPage] = useState(false);
   const [creatingBanner, setCreatingBanner] = useState(false);
+  const [previewPage, setPreviewPage] = useState<CmsPageDto | null>(null);
+  const [previewBanner, setPreviewBanner] = useState<CmsBannerDto | null>(null);
 
   return (
     <div className="flex flex-col gap-5" data-testid="website-page">
@@ -119,6 +124,9 @@ function WebsiteCmsPageInner() {
                     </td>
                     <td>
                       <div className="flex gap-2">
+                        <Button size="sm" onClick={() => setPreviewPage(p)} data-testid={`preview-cms-page-${p.slug}`}>
+                          {t('attach.preview')}
+                        </Button>
                         <Button size="sm" onClick={() => setEditingPage(p)}>
                           {t('common.edit')}
                         </Button>
@@ -181,9 +189,14 @@ function WebsiteCmsPageInner() {
                       </Badge>
                     </td>
                     <td>
-                      <Button size="sm" onClick={() => setEditingBanner(b)}>
-                        {t('common.edit')}
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => setPreviewBanner(b)} data-testid={`preview-cms-banner-${b.id}`}>
+                          {t('attach.preview')}
+                        </Button>
+                        <Button size="sm" onClick={() => setEditingBanner(b)}>
+                          {t('common.edit')}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -192,6 +205,60 @@ function WebsiteCmsPageInner() {
           )}
         </Card>
       )}
+
+      <RecordPreview
+        open={previewPage !== null}
+        onClose={() => setPreviewPage(null)}
+        title={previewPage?.title ?? ''}
+        subtitle={previewPage ? `/${previewPage.slug} · ${previewPage.locale.toUpperCase()}` : undefined}
+        entityType="CMS_PAGE"
+        entityId={previewPage?.id ?? null}
+        canWriteAttachments
+        testId="cms-page-preview"
+        fields={
+          previewPage
+            ? [
+                { label: t('cms.slug'), value: previewPage.slug },
+                { label: t('cms.titleField'), value: previewPage.title },
+                { label: t('cms.locale'), value: previewPage.locale.toUpperCase() },
+                { label: t('common.status'), value: previewPage.status },
+                { label: t('cms.excerpt'), value: previewPage.excerpt ?? '—' },
+                { label: t('common.created'), value: previewPage.publishedAt?.slice(0, 10) ?? '—' },
+                { label: t('common.updated'), value: previewPage.updatedAt.slice(0, 10) },
+              ]
+            : []
+        }
+      >
+        {previewPage ? (
+          <div className="max-h-[40vh] overflow-auto rounded-lg border p-3 text-[12.5px]" style={{ borderColor: 'var(--border)' }}>
+            {previewPage.body}
+          </div>
+        ) : null}
+      </RecordPreview>
+
+      <RecordPreview
+        open={previewBanner !== null}
+        onClose={() => setPreviewBanner(null)}
+        title={previewBanner?.title ?? ''}
+        subtitle={previewBanner ? `${previewBanner.placement} · ${previewBanner.locale.toUpperCase()}` : undefined}
+        entityType="CMS_BANNER"
+        entityId={previewBanner?.id ?? null}
+        canWriteAttachments
+        testId="cms-banner-preview"
+        fields={
+          previewBanner
+            ? [
+                { label: t('cms.placement'), value: previewBanner.placement },
+                { label: t('cms.titleField'), value: previewBanner.title },
+                { label: t('cms.subtitleField'), value: previewBanner.subtitle ?? '—' },
+                { label: t('cms.locale'), value: previewBanner.locale.toUpperCase() },
+                { label: t('common.active'), value: previewBanner.isActive ? t('common.yes') : t('common.no') },
+                { label: t('cms.actionUrl'), value: previewBanner.actionUrl ?? '—' },
+                { label: t('cms.imageUrl'), value: previewBanner.imageUrl ?? '—' },
+              ]
+            : []
+        }
+      />
 
       <PageEditor
         open={creatingPage || Boolean(editingPage)}
@@ -239,6 +306,7 @@ function PageEditor({
   const [form, setForm] = useState({ slug: '', locale: 'ar', title: '', excerpt: '', body: '', status: 'DRAFT' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const attach = useFormAttachments({ entityType: 'CMS_PAGE', entityId: page?.id ?? null });
 
   useEffect(() => {
     if (!open) return;
@@ -261,7 +329,9 @@ function PageEditor({
     setBusy(true);
     setError(null);
     try {
-      await api.upsertCmsPage(form);
+      const saved = await api.upsertCmsPage(form);
+      await attach.flush(saved.id);
+      attach.reset();
       await onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.error'));
@@ -302,7 +372,12 @@ function PageEditor({
           />
         </Field>
         <Field label={t('cms.locale')} required>
-          <select className="oryx-select" value={form.locale} onChange={(e) => setForm({ ...form, locale: e.target.value })}>
+          <select
+            className="oryx-select"
+            value={form.locale}
+            onChange={(e) => setForm({ ...form, locale: e.target.value })}
+            data-testid="cms-locale"
+          >
             <option value="ar">العربية</option>
             <option value="en">English</option>
           </select>
@@ -333,6 +408,18 @@ function PageEditor({
           />
         </Field>
       </div>
+      <div className="mt-4 border-t border-[var(--border)] pt-3">
+        <AttachmentField
+          entityType="CMS_PAGE"
+          entityId={page?.id ?? null}
+          value={attach.items}
+          onChange={attach.setItems}
+          registerFlush={attach.register}
+          canWrite
+          allowPrimary
+          testId="cms-page-attachments"
+        />
+      </div>
     </Modal>
   );
 }
@@ -361,6 +448,7 @@ function BannerEditor({
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const attach = useFormAttachments({ entityType: 'CMS_BANNER', entityId: banner?.id ?? null });
 
   useEffect(() => {
     if (!open) return;
@@ -394,7 +482,9 @@ function BannerEditor({
     setBusy(true);
     setError(null);
     try {
-      await api.upsertCmsBanner(form);
+      const saved = await api.upsertCmsBanner(form);
+      await attach.flush(saved.id);
+      attach.reset();
       await onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.error'));
@@ -478,6 +568,18 @@ function BannerEditor({
         />
         {t('common.active')}
       </label>
+      <div className="mt-4 border-t border-[var(--border)] pt-3">
+        <AttachmentField
+          entityType="CMS_BANNER"
+          entityId={banner?.id ?? null}
+          value={attach.items}
+          onChange={attach.setItems}
+          registerFlush={attach.register}
+          canWrite
+          allowPrimary
+          testId="cms-banner-attachments"
+        />
+      </div>
     </Modal>
   );
 }

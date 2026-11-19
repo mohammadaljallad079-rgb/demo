@@ -5,6 +5,9 @@ import type { CompanyDto, PlanDto, SubscriptionDto } from '@oryx/shared';
 import { api } from '@/lib/api';
 import { useUi } from '@/lib/ui-context';
 import { useAsync } from '@/lib/hooks';
+import { useFormAttachments } from '@/lib/use-form-attachments';
+import { AttachmentField } from '@/components/attachments';
+import { RecordPreview } from '@/components/record-preview';
 import { Icon } from '@/components/icons';
 import {
   Badge,
@@ -30,6 +33,7 @@ export default function SubscriptionsPage() {
 
   const [assignTo, setAssignTo] = useState<CompanyDto | null>(null);
   const [historyOf, setHistoryOf] = useState<SubscriptionRow | null>(null);
+  const [previewOf, setPreviewOf] = useState<SubscriptionRow | null>(null);
 
   return (
     <div className="flex flex-col gap-5" data-testid="subscriptions-page">
@@ -85,6 +89,9 @@ export default function SubscriptionsPage() {
                   </td>
                   <td>
                     <div className="flex flex-wrap gap-2">
+                      <Button size="sm" onClick={() => setPreviewOf(s)} data-testid={`preview-subscription-${s.companyId}`}>
+                        {t('attach.preview')}
+                      </Button>
                       <Button size="sm" onClick={() => setHistoryOf(s)}>
                         {t('subscriptions.history')}
                       </Button>
@@ -132,6 +139,37 @@ export default function SubscriptionsPage() {
       />
 
       <HistoryModal subscription={historyOf} onClose={() => setHistoryOf(null)} />
+
+      <RecordPreview
+        open={previewOf !== null}
+        onClose={() => setPreviewOf(null)}
+        title={previewOf ? (locale === 'ar' ? previewOf.companyNameAr : previewOf.companyNameEn) : ''}
+        subtitle={previewOf ? `${locale === 'ar' ? previewOf.planNameAr : previewOf.planNameEn} · ${previewOf.currency} ${previewOf.price.toLocaleString()}` : undefined}
+        entityType="SUBSCRIPTION"
+        entityId={previewOf?.id ?? null}
+        testId="subscription-preview"
+        fields={
+          previewOf
+            ? [
+                { label: t('context.company'), value: locale === 'ar' ? previewOf.companyNameAr : previewOf.companyNameEn },
+                { label: t('companies.plan'), value: locale === 'ar' ? previewOf.planNameAr : previewOf.planNameEn },
+                { label: t('common.status'), value: previewOf.status },
+                { label: t('subscriptions.period'), value: previewOf.billingPeriod === 'ANNUAL' ? t('plans.annual') : t('plans.monthly') },
+                { label: t('subscriptions.price'), value: `${previewOf.currency} ${previewOf.price.toLocaleString()}` },
+                { label: t('subscriptions.licence'), value: String(previewOf.licensedModules.length) },
+                { label: t('subscriptions.periodEnd'), value: previewOf.currentPeriodEnd?.slice(0, 10) ?? '—' },
+              ]
+            : []
+        }
+        table={
+          previewOf
+            ? {
+                headers: [t('subscriptions.licence')],
+                rows: previewOf.licensedModules.map((m) => [m]),
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }
@@ -152,6 +190,10 @@ function AssignModal({
   const [period, setPeriod] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const attach = useFormAttachments({
+    entityType: 'SUBSCRIPTION',
+    entityId: company?.subscription?.id ?? null,
+  });
 
   useEffect(() => {
     if (!company) return;
@@ -165,7 +207,9 @@ function AssignModal({
     setBusy(true);
     setError(null);
     try {
-      await api.assignSubscription(company.id, { planId, billingPeriod: period });
+      const saved = await api.assignSubscription(company.id, { planId, billingPeriod: period });
+      await attach.flush(saved.id);
+      attach.reset();
       await onDone();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.error'));
@@ -221,6 +265,19 @@ function AssignModal({
             <option value="ANNUAL">{t('plans.annual')}</option>
           </select>
         </Field>
+      </div>
+      <div className="mt-4 border-t border-[var(--border)] pt-3">
+        <AttachmentField
+          entityType="SUBSCRIPTION"
+          entityId={company?.subscription?.id ?? null}
+          value={attach.items}
+          onChange={attach.setItems}
+          registerFlush={attach.register}
+          canWrite
+          label={t('attach.title')}
+          hint={t('subscriptions.attachmentHint')}
+          testId="subscription-attachments"
+        />
       </div>
       <p className="oryx-faint mt-3 text-[11.5px]">{t('plans.note')}</p>
     </Modal>

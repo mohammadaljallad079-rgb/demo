@@ -14,8 +14,8 @@ engine, payments, notifications and the ORYX customer mobile application, and
 Execution 05 added the External Integrations Center and platform-completion
 work. It is **not** a mock: a NestJS API, a Next.js admin app, a Next.js
 customer site, an Expo/React Native mobile app and a PostgreSQL database run
-locally and are covered by 445 automated tests (93 shared unit, 218 API
-integration, 120 browser, 14 mobile).
+locally and are covered by 499 automated tests (93 shared unit, 247 API
+integration, 142 browser, 17 mobile).
 
 Security baseline (do not regress):
 - The refresh token lives in an HttpOnly cookie scoped to `/api/v1/auth`. It is
@@ -300,6 +300,34 @@ pnpm --filter @oryx/admin test:ui   # Playwright (needs both services running)
   set the refresh cookie, and `CsrfGuard` rejects any unsafe method carrying that
   cookie without a matching `x-oryx-csrf` header. The refresh branch above it
   echoes the cookie; the login branch must too.
+- **Read the CSRF cookie fresh at each call, never once per helper.** Every
+  rotation writes a *new* `oryx_csrf` cookie, so a value captured before the
+  refresh call is stale by the time the login fallback runs, and `CsrfGuard`
+  answers `403` — which the helper reports as "login status 403" and sends you
+  looking at credentials instead of cookie staleness. It fails once in a hundred
+  runs, which is worse than failing always.
+- **`tsc` does not catch a redeclaration inside `page.evaluate`.** The callback
+  is checked as its own function body, so a duplicate `const` there can pass
+  `pnpm typecheck` and still make Playwright refuse to load the spec
+  ("Identifier 'x' has already been declared"). Run `npx esbuild <file>` on a
+  spec you touched, or let CI tell you.
+- **`ubuntu-latest` is now 26.04, which Playwright will not install into.** The
+  browser job must pin `ubuntu-24.04`; the error is
+  `Playwright does not support chromium on ubuntu26.04-x64`. Only the browser
+  job needs the pin — the others are fine on `ubuntu-latest`.
+
+### Execution 06 gotchas
+
+- **A payslip snapshot is the only source for period figures.** `workedMinutes`
+  and `overtimeHours` are frozen into `Payslip.snapshot` when the run is created;
+  the employee file reads them from there and never recomputes them from
+  attendance, or a later attendance correction would silently rewrite history.
+  Both read `null` for payslips created before the field existed — the file never
+  invents a zero.
+- **A report window ending "today" must reach the end of today.** A bare
+  `YYYY-MM-DD` parses to midnight, so `lte: to` dropped every record stamped
+  later that day — a bonus created today vanished from its own report. The window
+  closes at `23:59:59.999Z`.
 
 ### Mobile gotchas
 

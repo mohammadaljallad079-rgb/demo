@@ -5,6 +5,10 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import { useUi } from '@/lib/ui-context';
 import { useAsync } from '@/lib/hooks';
+import type { ApiClientDto } from '@oryx/shared';
+import { useFormAttachments } from '@/lib/use-form-attachments';
+import { AttachmentField } from '@/components/attachments';
+import { RecordPreview } from '@/components/record-preview';
 import { Icon } from '@/components/icons';
 import {
   Badge,
@@ -27,6 +31,8 @@ function ApiManagementPageInner() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ clientId: string; secret: string } | null>(null);
+  const [previewOf, setPreviewOf] = useState<ApiClientDto | null>(null);
+  const attach = useFormAttachments();
 
   return (
     <div className="flex flex-col gap-5" data-testid="api-management-page">
@@ -101,19 +107,24 @@ function ApiManagementPageInner() {
                     </Badge>
                   </td>
                   <td>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      disabled={!c.isActive}
-                      onClick={async () => {
-                        // Routed through the API client so it carries the
-                        // Authorization header and the CSRF token.
-                        await api.revokeApiClient(String(c.id));
-                        await clients.reload();
-                      }}
-                    >
-                      {t('users.revoke')}
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" onClick={() => setPreviewOf(c)} data-testid={`preview-api-client-${String(c.clientId)}`}>
+                        {t('attach.preview')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        disabled={!c.isActive}
+                        onClick={async () => {
+                          // Routed through the API client so it carries the
+                          // Authorization header and the CSRF token.
+                          await api.revokeApiClient(String(c.id));
+                          await clients.reload();
+                        }}
+                      >
+                        {t('users.revoke')}
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -121,6 +132,27 @@ function ApiManagementPageInner() {
           </TableShell>
         )}
       </Card>
+
+      <RecordPreview
+        open={previewOf !== null}
+        onClose={() => setPreviewOf(null)}
+        title={previewOf ? previewOf.name : ''}
+        subtitle={previewOf?.clientId}
+        entityType="API_CLIENT"
+        entityId={previewOf?.id ?? null}
+        testId="api-client-preview"
+        fields={
+          previewOf
+            ? [
+                { label: t('common.name'), value: previewOf.name },
+                { label: t('app.clientId'), value: previewOf.clientId },
+                { label: t('app.rateLimit'), value: String(previewOf.rateLimitPerMinute) },
+                { label: t('app.scopes'), value: previewOf.scopes.join(', ') || '—' },
+                { label: t('common.status'), value: previewOf.isActive ? t('common.active') : t('common.inactive') },
+              ]
+            : []
+        }
+      />
 
       <Modal
         open={open}
@@ -159,6 +191,8 @@ function ApiManagementPageInner() {
                         .filter(Boolean),
                     });
                     setCreated({ clientId: String(res.clientId), secret: String(res.secret) });
+                    await attach.flush(String(res.id));
+                    attach.reset();
                     await clients.reload();
                   } catch (err) {
                     setError(err instanceof Error ? err.message : t('common.error'));
@@ -230,6 +264,19 @@ function ApiManagementPageInner() {
                     onChange={(e) => setForm({ ...form, scopes: e.target.value })}
                   />
                 </Field>
+              </div>
+              <div className="sm:col-span-2 border-t border-[var(--border)] pt-3">
+                <AttachmentField
+                  entityType="API_CLIENT"
+                  entityId={null}
+                  value={attach.items}
+                  onChange={attach.setItems}
+                  registerFlush={attach.register}
+                  canWrite
+                  label={t('app.clientAttachments')}
+                  hint={t('app.clientAttachmentsHint')}
+                  testId="api-client-attachments"
+                />
               </div>
             </div>
           </>

@@ -6,6 +6,9 @@ import { useAuth } from '@/lib/auth-context';
 import { useUi } from '@/lib/ui-context';
 import { useAsync } from '@/lib/hooks';
 import { Icon } from '@/components/icons';
+import { useFormAttachments } from '@/lib/use-form-attachments';
+import { AttachmentField } from '@/components/attachments';
+import { RecordPreview } from '@/components/record-preview';
 import {
   Badge,
   Button,
@@ -19,9 +22,11 @@ import {
   StatusBadge,
   TableShell,
 } from '@/components/ui';
-import type { PartsReservationDto } from '@oryx/shared';
+import type { PartsReservationDto, ProductDto } from '@oryx/shared';
 
 type Tab = 'catalog' | 'references' | 'compatibility' | 'reservations';
+
+type ProductRow = ProductDto;
 
 export default function SparePartsPage() {
   const { t } = useUi();
@@ -71,6 +76,7 @@ function CatalogTab() {
   const { t } = useUi();
   const [search, setSearch] = useState('');
   const list = useAsync(() => api.products({ search: search || undefined }), [search]);
+  const [detail, setDetail] = useState<ProductRow | null>(null);
   return (
     <Card>
       <div className="flex flex-wrap items-end gap-3 border-b border-[var(--border)] p-4">
@@ -91,6 +97,7 @@ function CatalogTab() {
               <th>{t('erp.inventory.salesPrice')}</th>
               <th>{t('erp.inventory.costPrice')}</th>
               <th>{t('erp.parts.reorderLevel')}</th>
+              <th>{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -101,11 +108,38 @@ function CatalogTab() {
                 <td className="tabular-nums text-[12.5px]">{(p.salesPriceMinor / 100).toFixed(2)}</td>
                 <td className="tabular-nums text-[12.5px]">{(p.costPriceMinor / 100).toFixed(2)}</td>
                 <td className="tabular-nums text-[12.5px]">{(p.reorderLevel / 10000).toFixed(0)}</td>
+                <td>
+                  <Button size="sm" onClick={() => setDetail(p)} data-testid={`preview-catalog-${p.sku}`}>
+                    {t('attach.preview')}
+                  </Button>
+                </td>
               </tr>
             ))}
           </tbody>
         </TableShell>
       )}
+
+      <RecordPreview
+        open={detail !== null}
+        onClose={() => setDetail(null)}
+        title={detail ? `${detail.sku} — ${detail.nameEn}` : ''}
+        subtitle={detail?.nameAr ?? undefined}
+        entityType="PRODUCT"
+        entityId={detail?.id ?? null}
+        testId="part-catalog-preview"
+        fields={
+          detail
+            ? [
+                { label: t('erp.inventory.sku'), value: detail.sku },
+                { label: `${t('common.name')} (EN)`, value: detail.nameEn },
+                { label: `${t('common.name')} (AR)`, value: detail.nameAr },
+                { label: t('erp.inventory.salesPrice'), value: (detail.salesPriceMinor / 100).toFixed(2) },
+                { label: t('erp.inventory.costPrice'), value: (detail.costPriceMinor / 100).toFixed(2) },
+                { label: t('erp.parts.reorderLevel'), value: String(detail.reorderLevel / 10000) },
+              ]
+            : []
+        }
+      />
     </Card>
   );
 }
@@ -115,6 +149,7 @@ function ReferencesTab({ canManage }: { canManage: boolean }) {
   const list = useAsync(() => api.partReferences(), []);
   const products = useAsync(() => api.products(), []);
   const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] p-4">
@@ -131,7 +166,7 @@ function ReferencesTab({ canManage }: { canManage: boolean }) {
         <EmptyState title={t('common.empty')} hint={t('erp.parts.emptyPartNumbers')} />
       ) : (
         <TableShell>
-          <thead><tr><th>{t('erp.parts.partNumber')}</th><th>{t('common.type')}</th><th>{t('erp.inventory.sku')}</th><th>{t('erp.parts.brand')}</th></tr></thead>
+          <thead><tr><th>{t('erp.parts.partNumber')}</th><th>{t('common.type')}</th><th>{t('erp.inventory.sku')}</th><th>{t('erp.parts.brand')}</th><th>{t('common.actions')}</th></tr></thead>
           <tbody>
             {list.data!.items.map((r) => (
               <tr key={String(r.id)} data-testid={`part-ref-${String(r.partNumber)}`}>
@@ -139,11 +174,34 @@ function ReferencesTab({ canManage }: { canManage: boolean }) {
                 <td><Badge tone="info">{String(r.type)}</Badge></td>
                 <td className="text-[12.5px]">{String((r.product as { sku?: string } | undefined)?.sku ?? '—')}</td>
                 <td className="text-[12.5px]">{r.brand ? String(r.brand) : '—'}</td>
+                <td>
+                  <Button size="sm" onClick={() => setDetail(r)} data-testid={`preview-part-ref-${String(r.partNumber)}`}>{t('attach.preview')}</Button>
+                </td>
               </tr>
             ))}
           </tbody>
         </TableShell>
       )}
+      <RecordPreview
+        open={detail !== null}
+        onClose={() => setDetail(null)}
+        title={detail ? `${t('erp.parts.partNumber')} — ${String(detail.partNumber)}` : ''}
+        subtitle={detail?.brand ? String(detail.brand) : undefined}
+        entityType="PART_REFERENCE"
+        entityId={detail ? String(detail.id) : null}
+        canWriteAttachments={canManage}
+        testId="part-reference-preview"
+        fields={
+          detail
+            ? [
+                { label: t('erp.parts.partNumber'), value: String(detail.partNumber) },
+                { label: t('common.type'), value: String(detail.type) },
+                { label: t('erp.inventory.sku'), value: String((detail.product as { sku?: string } | undefined)?.sku ?? '—') },
+                { label: t('erp.parts.brand'), value: detail.brand ? String(detail.brand) : '—' },
+              ]
+            : []
+        }
+      />
       <CreateReferenceModal open={open} products={products.data?.items ?? []} onClose={() => setOpen(false)} onCreated={list.reload} />
     </Card>
   );
@@ -164,10 +222,14 @@ function CreateReferenceModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ productId: '', partNumber: '', type: 'OEM', brand: '' });
+  const attach = useFormAttachments();
+
   const submit = async () => {
     setBusy(true); setError(null);
     try {
-      await api.createPartReference({ productId: form.productId, partNumber: form.partNumber, type: form.type, brand: form.brand || undefined });
+      const created = await api.createPartReference({ productId: form.productId, partNumber: form.partNumber, type: form.type, brand: form.brand || undefined });
+      await attach.flush(String(created.id));
+      attach.reset();
       await onCreated();
       onClose();
     } catch (e) { setError(e instanceof Error ? e.message : t('common.error')); } finally { setBusy(false); }
@@ -192,6 +254,9 @@ function CreateReferenceModal({
           </select>
         </Field>
         <Field label={t('erp.parts.brand')}><input className="oryx-input" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} /></Field>
+      </div>
+      <div className="mt-4 border-t border-[var(--border)] pt-3">
+        <AttachmentField entityType="PART_REFERENCE" entityId={null} value={attach.items} onChange={attach.setItems} registerFlush={attach.register} canWrite testId="new-part-reference-attachments" />
       </div>
     </Modal>
   );
@@ -288,6 +353,7 @@ function CreateCompatibilityModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ productId: '', make: '', model: '', yearFrom: '2015', yearTo: '' });
+  const attach = useFormAttachments();
   const submit = async () => {
     setBusy(true); setError(null);
     try {
@@ -298,6 +364,8 @@ function CreateCompatibilityModal({
         yearFrom: Number(form.yearFrom),
         yearTo: form.yearTo ? Number(form.yearTo) : undefined,
       });
+      await attach.flush(form.productId);
+      attach.reset();
       await onCreated();
       onClose();
     } catch (e) { setError(e instanceof Error ? e.message : t('common.error')); } finally { setBusy(false); }
@@ -318,6 +386,9 @@ function CreateCompatibilityModal({
         <Field label={t('erp.parts.yearFrom')} required><input className="oryx-input" value={form.yearFrom} onChange={(e) => setForm({ ...form, yearFrom: e.target.value })} data-testid="compatibility-year-from" /></Field>
         <Field label={t('erp.parts.yearTo')}><input className="oryx-input" value={form.yearTo} onChange={(e) => setForm({ ...form, yearTo: e.target.value })} /></Field>
       </div>
+      <div className="mt-4 border-t border-[var(--border)] pt-3">
+        <AttachmentField entityType="PART_REFERENCE" entityId={form.productId || null} value={attach.items} onChange={attach.setItems} registerFlush={attach.register} canWrite testId="new-compatibility-attachments" />
+      </div>
     </Modal>
   );
 }
@@ -325,6 +396,7 @@ function CreateCompatibilityModal({
 function ReservationsTab({ canIssue }: { canIssue: boolean }) {
   const { t } = useUi();
   const list = useAsync(() => api.partReservations(), []);
+  const [detail, setDetail] = useState<PartsReservationDto | null>(null);
   return (
     <Card>
       <div className="border-b border-[var(--border)] p-4"><p className="oryx-panel-title m-0">{t('erp.parts.reservations')}</p></div>
@@ -342,17 +414,45 @@ function ReservationsTab({ canIssue }: { canIssue: boolean }) {
                 <td className="text-[12.5px]">{r.reservedAt.slice(0, 10)}</td>
                 <td><StatusBadge status={r.status} label={r.status} /></td>
                 <td>
-                  {canIssue && (r.status === 'RESERVED' || r.status === 'PARTIALLY_ISSUED') ? (
-                    <Button size="sm" data-testid={`issue-reservation-${r.id.slice(-6)}`} onClick={async () => { await api.issuePartReservation(r.id); await list.reload(); }}>
-                      {t('erp.automotive.issue')}
-                    </Button>
-                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" onClick={() => setDetail(r)} data-testid={`preview-reservation-${r.id.slice(-6)}`}>{t('attach.preview')}</Button>
+                    {canIssue && (r.status === 'RESERVED' || r.status === 'PARTIALLY_ISSUED') ? (
+                      <Button size="sm" data-testid={`issue-reservation-${r.id.slice(-6)}`} onClick={async () => { await api.issuePartReservation(r.id); await list.reload(); }}>
+                        {t('erp.automotive.issue')}
+                      </Button>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </TableShell>
       )}
+
+      <RecordPreview
+        open={detail !== null}
+        onClose={() => setDetail(null)}
+        title={detail ? `${t('erp.parts.reservations')} — ${detail.jobCardId.slice(-6)}` : ''}
+        entityType="JOB_CARD"
+        entityId={detail?.jobCardId ?? null}
+        canWriteAttachments={false}
+        testId="reservation-preview"
+        fields={
+          detail
+            ? [
+                { label: t('erp.automotive.jobNumber'), value: detail.jobCardId.slice(-6) },
+                { label: t('erp.parts.lines'), value: String(detail.lines.length) },
+                { label: t('common.date'), value: detail.reservedAt.slice(0, 10) },
+                { label: t('common.status'), value: detail.status },
+                { label: t('erp.automotive.issuedAt'), value: detail.issuedAt ? detail.issuedAt.slice(0, 10) : '—' },
+              ]
+            : []
+        }
+        table={{
+          headers: [t('erp.inventory.sku'), t('erp.parts.quantity'), t('erp.automotive.issued')],
+          rows: (detail?.lines ?? []).map((l) => [l.productId.slice(-6), String(l.quantity), String(l.issuedQuantity)]),
+        }}
+      />
     </Card>
   );
 }
