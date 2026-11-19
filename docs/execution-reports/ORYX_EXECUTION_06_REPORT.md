@@ -12,7 +12,7 @@ Nothing is merged. Nothing is deployed to production.
 | Base | `main` |
 | Pull request | [#61](https://github.com/mohammadaljallad079-rgb/oryx/pull/61) (draft, open) |
 | Feature commit | `c7fbb96` — unified attachments, record previews and the employee electronic file |
-| Latest commit | `075692c` — payroll full-ledger print fix |
+| Follow-up commits | `075692c` payroll full-ledger print fix, `0125916` CI pin and report, `6226111` employee photograph, platform-global attachments and preview coverage |
 
 No existing work was overwritten, reset or force-pushed. Executions 01–05 are
 untouched.
@@ -36,7 +36,7 @@ Delivered:
 - Existing attachments survive an edit; the form never rewrites the attachment
   set from scratch.
 
-### 2.2 One catalogue, 61 attachable record types
+### 2.2 One catalogue, 68 attachable record types
 
 `packages/shared/src/attachments.ts` declares every attachable record exactly
 once. The API validates an upload against it, so an entity type that is not
@@ -45,7 +45,7 @@ permission and its write permission from the same declaration.
 
 | Group | Attachable records |
 | --- | --- |
-| Platform | company, branch, user, role, CMS page, CMS banner |
+| Platform | company, branch, user, role, CMS page, CMS banner, plan, subscription, support session, API client, feature flag, app version |
 | Accounting | journal entry, account, fiscal year, payment |
 | Sales | invoice, order, quotation, credit note, POS sale, cashier session, customer |
 | Procurement and inventory | product, supplier, requisition, purchase order, goods receipt, supplier invoice, purchase return, warehouse, stock transfer, stock adjustment |
@@ -155,8 +155,8 @@ Run against the local stack on the branch head.
 | Suite | Command | Result |
 | --- | --- | --- |
 | Shared unit | `pnpm --filter @oryx/shared test` | 93 passed (5 files) |
-| API integration | `pnpm --filter @oryx/api test:e2e` | 241 passed (9 suites) |
-| Browser acceptance | `pnpm --filter @oryx/admin test:ui` | 138 passed, 1 skipped by design |
+| API integration | `pnpm --filter @oryx/api test:e2e` | 242 passed (9 suites) |
+| Browser acceptance | `pnpm --filter @oryx/admin test:ui` | 139 passed, 1 skipped by design |
 | Typecheck | api, admin, customer, mobile | clean |
 | Lint | admin, customer, mobile | exit 0 |
 | Build | `@oryx/api`, `@oryx/admin` | pass |
@@ -221,10 +221,16 @@ Known limits, stated plainly:
 
 ## 7. What is deliberately not covered
 
-Platform-configuration screens — audit trail, plans, integrations, API
-management, application flags and versions — hold no tenant-scoped records, so
-they have no attachment field and no record preview. Adding one would be
-decoration, not function.
+- The dashboard, reports, modules, security and settings screens are not record
+  lists: they render aggregates or configuration, so there is no record for a
+  preview to show.
+- The audit trail is append-only evidence. A preview that offered to attach a
+  file to an audit row would weaken it, so it stays read-only and without an
+  attachment field.
+- Platform records — plans, subscriptions, support sessions, API clients,
+  feature flags, app versions and CMS content — do carry previews and
+  attachments. Their rows have no tenant, so `EntityAttachment.companyId` is
+  nullable and those rows are stored with a null company id.
 
 ## 8. Open items for the owner
 
