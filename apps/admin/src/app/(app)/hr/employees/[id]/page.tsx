@@ -240,6 +240,7 @@ function PersonalCardTab({
           <Row label={t('hr.file.manager')} value={e.managerNameEn ?? '—'} />
           <Row label={t('erp.hr.hireDate')} value={e.hireDate.slice(0, 10)} />
           <Row label={t('hr.file.contractType')} value={e.contractType} />
+          <Row label={t('common.status')} value={e.status} />
           <Row label={t('hr.file.terminationDate')} value={e.terminationDate?.slice(0, 10) ?? '—'} />
         </div>
 
@@ -606,6 +607,8 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
             { label: t('erp.hr.allowances'), value: money(slip.allowancesMinor, slip.currency) },
             { label: t('erp.hr.deductions'), value: money(slip.deductionsMinor, slip.currency) },
             { label: t('erp.hr.net'), value: money(slip.netMinor, slip.currency) },
+            { label: t('hr.file.workedHours'), value: slip.workedMinutes === null ? '—' : (slip.workedMinutes / 60).toFixed(2) },
+            { label: t('hr.file.overtimeHours'), value: slip.overtimeHours === null ? '—' : (slip.overtimeHours / 100).toFixed(2) },
           ],
           table: {
             columns: [
@@ -649,6 +652,8 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
               { header: t('erp.hr.allowances'), value: (r) => money(Number(r.allowancesMinor), String(r.currency)), align: 'end' },
               { header: t('erp.hr.deductions'), value: (r) => money(Number(r.deductionsMinor), String(r.currency)), align: 'end' },
               { header: t('erp.hr.net'), value: (r) => money(Number(r.netMinor), String(r.currency)), align: 'end' },
+              { header: t('hr.file.workedHours'), value: (r) => (r.workedMinutes == null ? '—' : (Number(r.workedMinutes) / 60).toFixed(2)) },
+              { header: t('hr.file.overtimeHours'), value: (r) => (r.overtimeHours == null ? '—' : (Number(r.overtimeHours) / 100).toFixed(2)) },
               { header: t('hr.file.paymentStatus'), value: (r) => String(r.paymentStatus) },
             ],
             rows: source.items as unknown as Array<Record<string, unknown>>,
@@ -672,6 +677,7 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
           t('erp.hr.allowances'),
           t('erp.hr.deductions'),
           t('erp.hr.net'),
+          t('hr.file.workedHours'),
           t('hr.file.overtimeHours'),
           t('hr.file.paymentStatus'),
           t('hr.file.paidAt'),
@@ -684,6 +690,7 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
           minorToText(s.allowancesMinor),
           minorToText(s.deductionsMinor),
           minorToText(s.netMinor),
+          s.workedMinutes === null ? '' : (s.workedMinutes / 60).toFixed(2),
           s.overtimeHours === null ? '' : (s.overtimeHours / 100).toFixed(2),
           s.paymentStatus,
           s.paidAt?.slice(0, 10) ?? '',
@@ -743,6 +750,7 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
                 <th>{t('erp.hr.allowances')}</th>
                 <th>{t('erp.hr.deductions')}</th>
                 <th>{t('erp.hr.net')}</th>
+                <th>{t('hr.file.workedHours')}</th>
                 <th>{t('hr.file.overtimeHours')}</th>
                 <th>{t('hr.file.paymentStatus')}</th>
                 <th>{t('hr.file.paidAt')}</th>
@@ -758,6 +766,7 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
                   <td className="tabular-nums text-[12.5px]">{money(s.allowancesMinor, s.currency)}</td>
                   <td className="tabular-nums text-[12.5px]">{money(s.deductionsMinor, s.currency)}</td>
                   <td className="tabular-nums text-[12.5px] font-semibold">{money(s.netMinor, s.currency)}</td>
+                  <td className="tabular-nums text-[12.5px]">{s.workedMinutes === null ? '—' : (s.workedMinutes / 60).toFixed(2)}</td>
                   <td className="tabular-nums text-[12.5px]">{s.overtimeHours === null ? '—' : (s.overtimeHours / 100).toFixed(2)}</td>
                   <td><StatusBadge status={s.paymentStatus} label={s.paymentStatus} /></td>
                   <td className="text-[12.5px]">{s.paidAt?.slice(0, 10) ?? '—'}</td>
@@ -798,6 +807,7 @@ function PayrollTab({ employeeId, employeeName, employeeCode }: { employeeId: st
                 { label: t('erp.hr.allowances'), value: money(preview.allowancesMinor, preview.currency) },
                 { label: t('erp.hr.deductions'), value: money(preview.deductionsMinor, preview.currency) },
                 { label: t('erp.hr.net'), value: money(preview.netMinor, preview.currency) },
+                { label: t('hr.file.workedHours'), value: preview.workedMinutes === null ? '—' : (preview.workedMinutes / 60).toFixed(2) },
                 { label: t('hr.file.overtimeHours'), value: preview.overtimeHours === null ? '—' : (preview.overtimeHours / 100).toFixed(2) },
                 { label: t('hr.file.paymentStatus'), value: preview.paymentStatus },
                 { label: t('hr.file.paidAt'), value: preview.paidAt?.slice(0, 10) ?? '—' },
@@ -1652,6 +1662,13 @@ function ReportsTab({
           ...(d.penalties.summary.totalMinor !== undefined
             ? [[t('hr.file.penaltiesSummary'), t('hr.file.bonusAmount'), minorToText(d.penalties.summary.totalMinor)]]
             : []),
+          [t('hr.file.bonusesSummary'), t('hr.file.tab.bonuses'), String(d.bonuses.summary.count)],
+          ...(d.bonuses.summary.approvedMinor !== undefined
+            ? [[t('hr.file.bonusesSummary'), t('hr.file.notPaid'), minorToText(d.bonuses.summary.approvedMinor)]]
+            : []),
+          ...(d.bonuses.summary.paidMinor !== undefined
+            ? [[t('hr.file.bonusesSummary'), t('hr.file.paid'), minorToText(d.bonuses.summary.paidMinor)]]
+            : []),
           ...(d.payroll.visible
             ? [
                 [t('hr.file.payrollTotals'), t('hr.file.basicSalary'), minorToText(d.payroll.totals.grossMinor)],
@@ -1681,6 +1698,26 @@ function ReportsTab({
           r.endDate.slice(0, 10),
           (r.days / 100).toFixed(2),
           r.status,
+        ]),
+      },
+      {
+        name: t('hr.file.tab.penalties'),
+        headers: [t('hr.file.actionType'), t('hr.file.effectiveDate'), t('hr.file.reason'), t('hr.file.decidedBy')],
+        rows: d.penalties.records.map((r) => [
+          r.actionType,
+          r.effectiveDate.slice(0, 10),
+          r.reason,
+          r.decidedByName ?? '',
+        ]),
+      },
+      {
+        name: t('hr.file.tab.bonuses'),
+        headers: [t('hr.file.bonusType'), t('hr.file.reason'), t('hr.file.approvedAt'), t('hr.file.paymentStatus')],
+        rows: d.bonuses.records.map((r) => [
+          r.type,
+          r.reason,
+          r.approvedAt?.slice(0, 10) ?? '',
+          r.paid ? t('hr.file.paid') : t('hr.file.notPaid'),
         ]),
       },
     ]);

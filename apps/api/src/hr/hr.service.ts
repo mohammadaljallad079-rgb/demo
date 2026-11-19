@@ -717,6 +717,7 @@ export class HrService {
         const overtimeMinutes = sumMinor(employee.attendance.map((a) => a.overtimeMinutes));
         // Overtime hours are hundredths: minutes / 60 * 100 = minutes * 5 / 3.
         const overtimeHours = Math.round((overtimeMinutes * 100) / 60);
+        const workedMinutes = sumMinor(employee.attendance.map((a) => a.workedMinutes));
 
         // One outstanding advance is settled per run, evenly across instalments.
         const advance = employee.advances[0];
@@ -769,6 +770,7 @@ export class HrService {
               basicMinor: structure.basicMinor,
               components: components as unknown as Prisma.InputJsonValue,
               overtimeHours,
+              workedMinutes,
               advanceDeductionMinor: advanceDeduction,
             },
             lines: { create: slip.lines.map((l) => ({ type: l.type as never, code: l.code, nameEn: l.nameEn, nameAr: l.nameAr, amountMinor: l.amountMinor, sortOrder: l.sortOrder })) },

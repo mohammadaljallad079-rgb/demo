@@ -220,6 +220,7 @@ export class EmployeeFileService {
       netMinor: p.netMinor,
       advanceDeductionMinor: p.advanceDeductionMinor,
       overtimeHours: readOvertimeHours(p.snapshot),
+      workedMinutes: readWorkedMinutes(p.snapshot),
       currency: p.currency,
       lines: p.lines.map((l) => ({
         id: l.id,
@@ -557,6 +558,10 @@ export class EmployeeFileService {
     const from = query.from ? new Date(query.from) : new Date(employee.hireDate);
     const to = query.to ? new Date(query.to) : new Date();
     if (to < from) throw badRequest(ERROR_CODES.VALIDATION_FAILED, 'End date must not precede the start date.');
+    // A bare `YYYY-MM-DD` end date parses to midnight, which would drop every
+    // record stamped later that same day — a bonus created today, an action
+    // effective today. The window closes at the end of the chosen day.
+    to.setUTCHours(23, 59, 59, 999);
 
     const [attendance, leaveRequests, leaveBalances, penalties, bonuses, payslips] = await Promise.all([
       this.prisma.attendanceRecord.findMany({
@@ -754,7 +759,16 @@ function payslipStatus(runStatus: string): 'DRAFT' | 'APPROVED' | 'PAID' | 'LOCK
  * value, so the file reports null rather than inventing zero.
  */
 function readOvertimeHours(snapshot: unknown): number | null {
+  return readSnapshotNumber(snapshot, 'overtimeHours');
+}
+
+/** Worked minutes were added to the snapshot later than `overtimeHours`. */
+function readWorkedMinutes(snapshot: unknown): number | null {
+  return readSnapshotNumber(snapshot, 'workedMinutes');
+}
+
+function readSnapshotNumber(snapshot: unknown, key: string): number | null {
   if (!snapshot || typeof snapshot !== 'object') return null;
-  const value = (snapshot as Record<string, unknown>).overtimeHours;
+  const value = (snapshot as Record<string, unknown>)[key];
   return typeof value === 'number' ? value : null;
 }

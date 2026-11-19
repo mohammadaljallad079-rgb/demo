@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { COMPANY_ADMIN, ENTERPRISE_ADMIN, SUPER_ADMIN, apiToken, setLocale, setTheme, signIn } from './helpers';
 
 /**
@@ -509,6 +510,25 @@ test.describe('Execution 06 — attachments and employee file', () => {
       expect(attendance.ok, `attendance failed with ${attendance.status}`).toBe(true);
     }
 
+    // A penalty and a bonus, so the two new export sheets carry real rows.
+    const penalty = await fetch(`${API}/hr/employees/${employee.id}/file/penalties`, {
+      method: 'POST',
+      headers: H,
+      body: JSON.stringify({
+        actionType: 'WARNING',
+        reason: 'Late attendance warning',
+        effectiveDate: '2026-02-05',
+        decidedByName: 'Line Manager',
+      }),
+    });
+    expect(penalty.ok, `penalty failed with ${penalty.status}`).toBe(true);
+    const bonus = await fetch(`${API}/hr/employees/${employee.id}/file/bonuses`, {
+      method: 'POST',
+      headers: H,
+      body: JSON.stringify({ type: 'BONUS', reason: 'Quarterly award', amountMinor: 100000 }),
+    });
+    expect(bonus.ok, `bonus failed with ${bonus.status}`).toBe(true);
+
     await page.goto(`/hr/employees/${employee.id}`);
     await page.getByTestId('file-tab-reports').click();
     await expect(page.getByTestId('file-reports')).toBeVisible({ timeout: 20_000 });
@@ -528,6 +548,16 @@ test.describe('Execution 06 — attachments and employee file', () => {
     expect(file.suggestedFilename()).toMatch(/\.xlsx$/);
     const path = await file.path();
     expect(path).toBeTruthy();
+
+    // The workbook carries a sheet per record family, so a payroll clerk does
+    // not have to re-run the export to get penalties and bonuses. The writer
+    // stores parts uncompressed, so the sheet names are readable in the bytes.
+    const raw = await readFile(path!, 'latin1');
+    const sheetNames = [...raw.matchAll(/<sheet name="([^"]+)"/g)].map((m) => m[1]);
+    expect(sheetNames).toHaveLength(5);
+    expect(raw).toContain('2026-02-03');
+    expect(raw).toContain('Late attendance warning');
+    expect(raw).toContain('Quarterly award');
   });
 
   test('16. the payroll tab prints the chosen window and the full ledger separately', async ({ page }) => {

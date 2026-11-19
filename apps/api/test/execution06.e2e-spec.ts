@@ -372,6 +372,51 @@ describe('ORYX Execution 06 (e2e)', () => {
       expect(['DRAFT', 'APPROVED', 'PAID', 'LOCKED']).toContain(res.body.items[0].paymentStatus);
     });
 
+    it('freezes the period worked minutes and overtime into the payslip', async () => {
+      await erp('/hr/attendance', {
+        method: 'POST',
+        body: {
+          employeeId,
+          workDate: '2025-02-10',
+          status: 'PRESENT',
+          checkInAt: '2025-02-10T08:00:00.000Z',
+          checkOutAt: '2025-02-10T17:30:00.000Z',
+          overtimeMinutes: 90,
+        },
+      });
+      const period = await erp<{ id: string }>('/hr/payroll-periods', {
+        method: 'POST',
+        body: { code: 'P2025-02', nameEn: 'February 2025', nameAr: 'فبراير 2025', startDate: '2025-02-01', endDate: '2025-02-28' },
+      });
+      expect(period.status).toBe(201);
+      const run = await erp('/hr/payroll-runs', { method: 'POST', body: { periodId: period.body.id } });
+      expect(run.status).toBe(201);
+
+      const res = await erp<{
+        items: Array<{ periodCode: string; workedMinutes: number | null; overtimeHours: number | null }>;
+      }>(`/hr/employees/${employeeId}/file/payroll`);
+      const slip = res.body.items.find((i) => i.periodCode === 'P2025-02');
+      expect(slip).toBeDefined();
+      expect(slip!.workedMinutes).toBe(570);
+      expect(slip!.overtimeHours).toBe(150);
+    });
+
+    it('includes records created on the last day of the report window', async () => {
+      // A window that ends "today" must reach the end of today, not midnight.
+      const today = new Date().toISOString().slice(0, 10);
+      const bonus = await erp<{ id: string }>(`/hr/employees/${employeeId}/file/bonuses`, {
+        method: 'POST',
+        body: { type: 'BONUS', reason: 'Same-day award', amountMinor: 50000 },
+      });
+      expect(bonus.status).toBe(201);
+
+      const res = await erp<{ bonuses: { records: Array<{ id: string; reason: string }> } }>(
+        `/hr/employees/${employeeId}/file/reports?from=2024-01-01&to=${today}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.bonuses.records.some((r) => r.id === bonus.body.id)).toBe(true);
+    });
+
     it('builds a report pack whose attendance summary matches the stored records', async () => {
       await erp('/hr/attendance', {
         method: 'POST',

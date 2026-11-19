@@ -1567,6 +1567,11 @@ export interface EmployeePayslipDto {
   advanceDeductionMinor: number;
   /** Overtime frozen into the payslip snapshot, in hundredths of an hour. */
   overtimeHours: number | null;
+  /**
+   * Worked minutes frozen into the payslip snapshot. Null for payslips created
+   * before the field existed — the file never invents a zero.
+   */
+  workedMinutes: number | null;
   currency: string;
   lines: PayslipLineDto[];
 }
