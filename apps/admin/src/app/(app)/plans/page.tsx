@@ -7,6 +7,9 @@ import { MODULES } from '@oryx/shared';
 import { api } from '@/lib/api';
 import { useUi } from '@/lib/ui-context';
 import { useAsync } from '@/lib/hooks';
+import { useFormAttachments } from '@/lib/use-form-attachments';
+import { AttachmentField } from '@/components/attachments';
+import { RecordPreview } from '@/components/record-preview';
 import { Icon } from '@/components/icons';
 import {
   Badge,
@@ -25,6 +28,7 @@ function PlansPageInner() {
   const plans = useAsync(() => api.listPlans(), []);
   const [editing, setEditing] = useState<PlanDto | null>(null);
   const [creating, setCreating] = useState(false);
+  const [previewOf, setPreviewOf] = useState<PlanDto | null>(null);
 
   return (
     <div className="flex flex-col gap-5" data-testid="plans-page">
@@ -130,6 +134,9 @@ function PlansPageInner() {
                   <Badge tone="neutral">
                     {p.subscriberCount ?? 0} {t('plans.subscribers')}
                   </Badge>
+                  <Button size="sm" onClick={() => setPreviewOf(p)} data-testid={`preview-plan-${p.code}`}>
+                    {t('attach.preview')}
+                  </Button>
                   <Button size="sm" onClick={() => setEditing(p)} data-testid={`edit-plan-${p.code}`}>
                     {t('common.edit')}
                   </Button>
@@ -143,6 +150,32 @@ function PlansPageInner() {
           <EmptyState title={t('common.empty')} hint={t('common.emptyHint')} />
         </Card>
       ) : null}
+
+      <RecordPreview
+        open={previewOf !== null}
+        onClose={() => setPreviewOf(null)}
+        title={previewOf ? (locale === 'ar' ? previewOf.nameAr : previewOf.nameEn) : ''}
+        subtitle={previewOf?.code}
+        entityType="PLAN"
+        entityId={previewOf?.id ?? null}
+        testId="plan-preview"
+        fields={
+          previewOf
+            ? [
+                { label: t('common.code'), value: previewOf.code },
+                { label: t('plans.monthly'), value: `${previewOf.monthlyPrice.toLocaleString()} ${previewOf.currency}` },
+                { label: t('plans.annual'), value: `${previewOf.annualPrice.toLocaleString()} ${previewOf.currency}` },
+                { label: t('plans.trial'), value: String(previewOf.trialDays) },
+                { label: t('plans.maxBranches'), value: String(previewOf.maxBranches) },
+                { label: t('plans.maxUsers'), value: String(previewOf.maxUsers) },
+                { label: t('plans.storage'), value: String(previewOf.storageMb) },
+                { label: t('plans.apiCalls'), value: String(previewOf.apiRequestsPerMonth) },
+                { label: t('plans.subscribers'), value: String(previewOf.subscriberCount ?? 0) },
+                { label: t('plans.includedModules'), value: previewOf.modules.map((m) => (locale === 'ar' ? m.nameAr : m.nameEn)).join('، ') },
+              ]
+            : []
+        }
+      />
 
       <PlanEditor
         open={creating || Boolean(editing)}
@@ -187,6 +220,7 @@ function PlanEditor({
   const { t, locale } = useUi();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const attach = useFormAttachments({ entityType: 'PLAN', entityId: plan?.id ?? null });
   const [form, setForm] = useState({
     code: '',
     nameEn: '',
@@ -276,11 +310,11 @@ function PlanEditor({
         isActive: form.isActive,
         modules: form.modules,
       };
-      if (plan) {
-        await api.updatePlan(plan.id, payload);
-      } else {
-        await api.createPlan({ ...payload, code: form.code });
-      }
+      const saved = plan
+        ? await api.updatePlan(plan.id, payload)
+        : await api.createPlan({ ...payload, code: form.code });
+      await attach.flush(saved.id);
+      attach.reset();
       await onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.error'));
@@ -487,6 +521,19 @@ function PlanEditor({
             </span>
           </label>
         ))}
+      </div>
+
+      <div className="mt-4 border-t border-[var(--border)] pt-3">
+        <AttachmentField
+          entityType="PLAN"
+          entityId={plan?.id ?? null}
+          value={attach.items}
+          onChange={attach.setItems}
+          registerFlush={attach.register}
+          canWrite
+          label={t('attach.title')}
+          testId="plan-attachments"
+        />
       </div>
     </Modal>
   );

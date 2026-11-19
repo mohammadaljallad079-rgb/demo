@@ -465,7 +465,7 @@ function EditEmployeeModal({
     bankAccountIban: bank?.bankAccountIban ?? '',
     contractType: employee.contractType,
   });
-  const attach = useFormAttachments();
+  const attach = useFormAttachments({ entityType: 'EMPLOYEE', entityId: employee.id });
 
   const submit = async () => {
     setBusy(true);
@@ -1709,6 +1709,144 @@ function ReportsTab({
           )}
         </Card>
       </div>
+
+      <Card data-testid="report-attendance-records">
+        <div className="border-b border-[var(--border)] p-4">
+          <p className="oryx-panel-title m-0">{t('hr.file.attendanceRecords')}</p>
+        </div>
+        {d.attendance.records.length === 0 ? (
+          <EmptyState title={t('hr.file.noRecords')} />
+        ) : (
+          <TableShell>
+            <thead>
+              <tr>
+                <th>{t('common.date')}</th>
+                <th>{t('common.status')}</th>
+                <th>{t('hr.file.checkIn')}</th>
+                <th>{t('hr.file.checkOut')}</th>
+                <th>{t('hr.file.workedHours')}</th>
+                <th>{t('hr.file.overtimeHours')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.attendance.records.map((r) => (
+                <tr key={r.id}>
+                  <td className="text-[12.5px]">{r.workDate.slice(0, 10)}</td>
+                  <td><StatusBadge status={r.status} label={r.status} /></td>
+                  <td className="text-[12.5px]">{r.checkInAt ? new Date(r.checkInAt).toLocaleTimeString() : '—'}</td>
+                  <td className="text-[12.5px]">{r.checkOutAt ? new Date(r.checkOutAt).toLocaleTimeString() : '—'}</td>
+                  <td className="tabular-nums text-[12.5px]">{hours(r.workedMinutes)}</td>
+                  <td className="tabular-nums text-[12.5px]">{hours(r.overtimeMinutes)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </TableShell>
+        )}
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card data-testid="report-leave-records">
+          <div className="border-b border-[var(--border)] p-4">
+            <p className="oryx-panel-title m-0">{t('hr.file.leaveRecords')}</p>
+          </div>
+          {d.leave.records.length === 0 ? (
+            <EmptyState title={t('hr.file.noRecords')} />
+          ) : (
+            <TableShell>
+              <thead>
+                <tr>
+                  <th>{t('erp.hr.leaveType')}</th>
+                  <th>{t('common.date')}</th>
+                  <th>{t('erp.hr.days')}</th>
+                  <th>{t('common.status')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.leave.records.map((r) => (
+                  <tr key={r.id}>
+                    <td className="text-[12.5px]">{r.leaveTypeNameEn}</td>
+                    <td className="text-[12.5px]">{r.startDate.slice(0, 10)} → {r.endDate.slice(0, 10)}</td>
+                    <td className="tabular-nums text-[12.5px]">{(r.days / 100).toFixed(2)}</td>
+                    <td><StatusBadge status={r.status} label={r.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableShell>
+          )}
+        </Card>
+
+        <Card data-testid="report-penalty-records">
+          <div className="border-b border-[var(--border)] p-4">
+            <p className="oryx-panel-title m-0">{t('hr.file.penaltyRecords')}</p>
+          </div>
+          {d.penalties.records.length === 0 ? (
+            <EmptyState title={t('hr.file.noRecords')} />
+          ) : (
+            <TableShell>
+              <thead>
+                <tr>
+                  <th>{t('hr.file.actionType')}</th>
+                  <th>{t('hr.file.effectiveDate')}</th>
+                  <th>{t('hr.file.reason')}</th>
+                  {d.payroll.visible ? <th>{t('hr.file.bonusAmount')}</th> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {d.penalties.records.map((r) => (
+                  <tr key={r.id}>
+                    <td className="text-[12.5px] font-semibold">{r.actionType}</td>
+                    <td className="text-[12.5px]">{r.effectiveDate.slice(0, 10)}</td>
+                    <td className="text-[12.5px]">{r.reason}</td>
+                    {d.payroll.visible ? (
+                      <td className="tabular-nums text-[12.5px]">
+                        {r.amountMinor !== undefined ? money(r.amountMinor, r.currency ?? 'SAR') : '—'}
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </TableShell>
+          )}
+        </Card>
+      </div>
+
+      <Card data-testid="report-bonus-records">
+        <div className="border-b border-[var(--border)] p-4">
+          <p className="oryx-panel-title m-0">{t('hr.file.bonusRecords')}</p>
+        </div>
+        {d.bonuses.records.length === 0 ? (
+          <EmptyState title={t('hr.file.noRecords')} />
+        ) : (
+          <TableShell>
+            <thead>
+              <tr>
+                <th>{t('hr.file.bonusType')}</th>
+                <th>{t('hr.file.reason')}</th>
+                <th>{t('hr.file.approvedAt')}</th>
+                {d.payroll.visible ? <th>{t('hr.file.bonusAmount')}</th> : null}
+                <th>{t('hr.file.paymentStatus')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.bonuses.records.map((r) => (
+                <tr key={r.id}>
+                  <td className="text-[12.5px] font-semibold">{r.type}</td>
+                  <td className="text-[12.5px]">{r.reason}</td>
+                  <td className="text-[12.5px]">{r.approvedAt?.slice(0, 10) ?? '—'}</td>
+                  {d.payroll.visible ? (
+                    <td className="tabular-nums text-[12.5px]">
+                      {r.amountMinor !== undefined ? money(r.amountMinor, r.currency ?? 'SAR') : '—'}
+                    </td>
+                  ) : null}
+                  <td>
+                    <StatusBadge status={r.paid ? 'PAID' : 'APPROVED'} label={r.paid ? t('hr.file.paid') : t('hr.file.notPaid')} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </TableShell>
+        )}
+      </Card>
     </div>
   );
 }

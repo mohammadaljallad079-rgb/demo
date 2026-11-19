@@ -329,10 +329,21 @@ not assume any of these exist.
 
 This release adds two tables, four nullable columns on `Employee`, three
 defaulted columns on `EntityAttachment` and a new files-on-disk store. The
-migration is **additive**: it creates tables, adds columns with defaults and
-drops nothing, so it can be applied to a live database. The files are the part
+migrations are **additive**: they create tables, add columns with defaults and
+drop nothing, so they can be applied to a live database. The files are the part
 that has no migration — they must be given a durable home before the API starts
 writing them.
+
+Two migrations ship in this release:
+
+| Migration | Effect |
+| --- | --- |
+| `execution_06_attachments_employee_file` | Creates `EntityAttachment` and `EmployeeFileAudit`, adds the four nullable `Employee` columns and the three defaulted `EntityAttachment` columns |
+| `execution_06_platform_attachments` | Drops `NOT NULL` from `EntityAttachment.companyId` (platform CMS rows have no tenant) and adds `EntityAttachment_entityType_entityId_idx` |
+
+The second migration relaxes a constraint and adds an index; it rewrites no rows
+and needs no backfill. Existing tenant rows keep their `companyId`, and the
+`(companyId, entityType, entityId)` index still serves their reads.
 
 ### Before you deploy
 
@@ -398,6 +409,11 @@ deploying. Grant the three permissions deliberately to the roles that need them.
       the salary and bank fields are absent, not blank
 - [ ] Print an employee card in Arabic; the layout is right-to-left and the
       photograph is present
+- [ ] Upload an employee photograph from the file's photo card, set it primary,
+      reload and confirm the image still renders; print the card and confirm the
+      same photograph appears in the printed header
+- [ ] Open a website CMS page preview as a platform principal; upload a file and
+      confirm the row is stored with a null `companyId`
 - [ ] `ls -R "$UPLOAD_DIR"` shows one directory per company and the files just
       uploaded
 

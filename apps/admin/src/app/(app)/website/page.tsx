@@ -8,6 +8,8 @@ import { useUi } from '@/lib/ui-context';
 import { useAsync } from '@/lib/hooks';
 import { Icon } from '@/components/icons';
 import { RecordPreview } from '@/components/record-preview';
+import { AttachmentField } from '@/components/attachments';
+import { useFormAttachments } from '@/lib/use-form-attachments';
 import {
   Badge,
   Button,
@@ -209,7 +211,9 @@ function WebsiteCmsPageInner() {
         onClose={() => setPreviewPage(null)}
         title={previewPage?.title ?? ''}
         subtitle={previewPage ? `/${previewPage.slug} · ${previewPage.locale.toUpperCase()}` : undefined}
+        entityType="CMS_PAGE"
         entityId={previewPage?.id ?? null}
+        canWriteAttachments
         testId="cms-page-preview"
         fields={
           previewPage
@@ -237,7 +241,9 @@ function WebsiteCmsPageInner() {
         onClose={() => setPreviewBanner(null)}
         title={previewBanner?.title ?? ''}
         subtitle={previewBanner ? `${previewBanner.placement} · ${previewBanner.locale.toUpperCase()}` : undefined}
+        entityType="CMS_BANNER"
         entityId={previewBanner?.id ?? null}
+        canWriteAttachments
         testId="cms-banner-preview"
         fields={
           previewBanner
@@ -300,6 +306,7 @@ function PageEditor({
   const [form, setForm] = useState({ slug: '', locale: 'ar', title: '', excerpt: '', body: '', status: 'DRAFT' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const attach = useFormAttachments({ entityType: 'CMS_PAGE', entityId: page?.id ?? null });
 
   useEffect(() => {
     if (!open) return;
@@ -322,7 +329,9 @@ function PageEditor({
     setBusy(true);
     setError(null);
     try {
-      await api.upsertCmsPage(form);
+      const saved = await api.upsertCmsPage(form);
+      await attach.flush(saved.id);
+      attach.reset();
       await onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.error'));
@@ -363,7 +372,12 @@ function PageEditor({
           />
         </Field>
         <Field label={t('cms.locale')} required>
-          <select className="oryx-select" value={form.locale} onChange={(e) => setForm({ ...form, locale: e.target.value })}>
+          <select
+            className="oryx-select"
+            value={form.locale}
+            onChange={(e) => setForm({ ...form, locale: e.target.value })}
+            data-testid="cms-locale"
+          >
             <option value="ar">العربية</option>
             <option value="en">English</option>
           </select>
@@ -394,6 +408,18 @@ function PageEditor({
           />
         </Field>
       </div>
+      <div className="mt-4 border-t border-[var(--border)] pt-3">
+        <AttachmentField
+          entityType="CMS_PAGE"
+          entityId={page?.id ?? null}
+          value={attach.items}
+          onChange={attach.setItems}
+          registerFlush={attach.register}
+          canWrite
+          allowPrimary
+          testId="cms-page-attachments"
+        />
+      </div>
     </Modal>
   );
 }
@@ -422,6 +448,7 @@ function BannerEditor({
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const attach = useFormAttachments({ entityType: 'CMS_BANNER', entityId: banner?.id ?? null });
 
   useEffect(() => {
     if (!open) return;
@@ -455,7 +482,9 @@ function BannerEditor({
     setBusy(true);
     setError(null);
     try {
-      await api.upsertCmsBanner(form);
+      const saved = await api.upsertCmsBanner(form);
+      await attach.flush(saved.id);
+      attach.reset();
       await onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.error'));
@@ -539,6 +568,18 @@ function BannerEditor({
         />
         {t('common.active')}
       </label>
+      <div className="mt-4 border-t border-[var(--border)] pt-3">
+        <AttachmentField
+          entityType="CMS_BANNER"
+          entityId={banner?.id ?? null}
+          value={attach.items}
+          onChange={attach.setItems}
+          registerFlush={attach.register}
+          canWrite
+          allowPrimary
+          testId="cms-banner-attachments"
+        />
+      </div>
     </Modal>
   );
 }

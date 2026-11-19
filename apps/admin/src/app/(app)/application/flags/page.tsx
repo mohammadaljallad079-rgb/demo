@@ -6,6 +6,9 @@ import type { FeatureFlagDto } from '@oryx/shared';
 import { api } from '@/lib/api';
 import { useUi } from '@/lib/ui-context';
 import { useAsync } from '@/lib/hooks';
+import { useFormAttachments } from '@/lib/use-form-attachments';
+import { AttachmentField } from '@/components/attachments';
+import { RecordPreview } from '@/components/record-preview';
 import { Icon } from '@/components/icons';
 import {
   Badge,
@@ -25,6 +28,7 @@ function FeatureFlagsPageInner() {
   const flags = useAsync(() => api.featureFlags(), []);
   const [editing, setEditing] = useState<FeatureFlagDto | null>(null);
   const [creating, setCreating] = useState(false);
+  const [previewOf, setPreviewOf] = useState<FeatureFlagDto | null>(null);
 
   return (
     <div className="flex flex-col gap-5" data-testid="feature-flags-page">
@@ -79,9 +83,14 @@ function FeatureFlagsPageInner() {
                     </Badge>
                   </td>
                   <td>
-                    <Button size="sm" onClick={() => setEditing(f)}>
-                      {t('common.edit')}
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" onClick={() => setPreviewOf(f)} data-testid={`preview-flag-${f.key}`}>
+                        {t('attach.preview')}
+                      </Button>
+                      <Button size="sm" onClick={() => setEditing(f)}>
+                        {t('common.edit')}
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -89,6 +98,28 @@ function FeatureFlagsPageInner() {
           </TableShell>
         )}
       </Card>
+
+      <RecordPreview
+        open={previewOf !== null}
+        onClose={() => setPreviewOf(null)}
+        title={previewOf ? (locale === 'ar' ? previewOf.nameAr : previewOf.nameEn) : ''}
+        subtitle={previewOf?.key}
+        entityType="FEATURE_FLAG"
+        entityId={previewOf?.id ?? null}
+        testId="feature-flag-preview"
+        fields={
+          previewOf
+            ? [
+                { label: t('common.code'), value: previewOf.key },
+                { label: t('common.name'), value: `${previewOf.nameEn} / ${previewOf.nameAr}` },
+                { label: t('app.audience'), value: previewOf.audience },
+                { label: t('app.rollout'), value: `${previewOf.rolloutPercentage}%` },
+                { label: t('common.status'), value: previewOf.enabled ? t('app.enabled') : t('app.disabled') },
+                { label: t('common.description'), value: previewOf.description ?? '—' },
+              ]
+            : []
+        }
+      />
 
       <FlagEditor
         open={creating || Boolean(editing)}
@@ -121,6 +152,7 @@ function FlagEditor({
   const { t } = useUi();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const attach = useFormAttachments({ entityType: 'FEATURE_FLAG', entityId: flag?.id ?? null });
   const [form, setForm] = useState({
     key: '',
     nameEn: '',
@@ -164,7 +196,9 @@ function FlagEditor({
               setBusy(true);
               setError(null);
               try {
-                await api.upsertFeatureFlag(form);
+                const saved = await api.upsertFeatureFlag(form);
+                await attach.flush(String(saved.id));
+                attach.reset();
                 await onSaved();
               } catch (err) {
                 setError(err instanceof Error ? err.message : t('common.error'));
@@ -242,6 +276,19 @@ function FlagEditor({
         />
         {t('app.enabled')}
       </label>
+      <div className="mt-4 border-t border-[var(--border)] pt-3">
+        <AttachmentField
+          entityType="FEATURE_FLAG"
+          entityId={flag?.id ?? null}
+          value={attach.items}
+          onChange={attach.setItems}
+          registerFlush={attach.register}
+          canWrite
+          label={t('app.flagAttachments')}
+          hint={t('app.flagAttachmentsHint')}
+          testId="flag-attachments"
+        />
+      </div>
     </Modal>
   );
 }

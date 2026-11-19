@@ -3161,7 +3161,11 @@ model EntityComment {
 
 model EntityAttachment {
   id         String   @id @default(cuid())
-  companyId  String
+  /**
+   * Null for a platform-global record (the website CMS, which belongs to no
+   * tenant). Every tenant-owned attachment carries its company id.
+   */
+  companyId  String?
   entityType String
   entityId   String
   fileName   String
@@ -3178,9 +3182,10 @@ model EntityAttachment {
   uploadedById String?
   createdAt  DateTime @default(now())
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId, entityType, entityId])
+  @@index([entityType, entityId])
 }
 
 /** Internal, database-persisted notification. No external provider is claimed. */

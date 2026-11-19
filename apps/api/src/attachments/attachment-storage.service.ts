@@ -17,6 +17,8 @@ import { badRequest, ERROR_CODES } from '../common/errors';
  * The local driver is the only one implemented. A cloud driver can be added
  * behind the same three methods without changing the attachments service.
  */
+const PLATFORM_STORAGE_OWNER = '_platform';
+
 @Injectable()
 export class AttachmentStorage {
   private readonly logger = new Logger(AttachmentStorage.name);
@@ -26,9 +28,14 @@ export class AttachmentStorage {
     return resolve(process.env.UPLOAD_DIR ?? join(process.cwd(), 'var', 'uploads'));
   }
 
-  /** Persist `buffer` and return the reference and checksum to store on the row. */
+  /**
+   * Persist `buffer` and return the reference and checksum to store on the row.
+   *
+   * A platform-global record has no tenant; its files live under a reserved
+   * directory name so the upload root stays flat and auditable.
+   */
   async write(
-    companyId: string,
+    companyId: string | null,
     fileName: string,
     buffer: Buffer,
   ): Promise<{ storageRef: string; checksum: string; sizeBytes: number }> {
@@ -38,7 +45,8 @@ export class AttachmentStorage {
     }
 
     const now = new Date();
-    const relativeDir = join(companyId, String(now.getUTCFullYear()), String(now.getUTCMonth() + 1).padStart(2, '0'));
+    const owner = companyId ?? PLATFORM_STORAGE_OWNER;
+    const relativeDir = join(owner, String(now.getUTCFullYear()), String(now.getUTCMonth() + 1).padStart(2, '0'));
     const extension = extensionOf(fileName) || 'bin';
     const storageRef = join(relativeDir, `${randomUUID()}.${extension}`);
     const absolute = this.absolutePath(storageRef);

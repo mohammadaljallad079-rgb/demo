@@ -5,6 +5,8 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useUi } from '@/lib/ui-context';
 import { useAsync } from '@/lib/hooks';
+import { useFormAttachments } from '@/lib/use-form-attachments';
+import { AttachmentField } from '@/components/attachments';
 import { RecordPreview } from '@/components/record-preview';
 import {
   Badge,
@@ -378,6 +380,8 @@ function ReconciliationTab({ canManage }: { canManage: boolean }) {
   const { t } = useUi();
   const [onlyUnmatched, setOnlyUnmatched] = useState(false);
   const [open, setOpen] = useState(false);
+  const [previewOf, setPreviewOf] = useState<Record<string, unknown> | null>(null);
+  const attach = useFormAttachments();
   const [form, setForm] = useState({
     provider: 'CASH',
     businessDate: new Date().toISOString().slice(0, 10),
@@ -392,12 +396,14 @@ function ReconciliationTab({ canManage }: { canManage: boolean }) {
     setBusy(true);
     setError(null);
     try {
-      await api.reconcilePayments({
+      const saved = await api.reconcilePayments({
         provider: form.provider,
         businessDate: form.businessDate,
         externalCount: Number(form.externalCount),
         externalMinor: Number(form.externalMinor),
       });
+      await attach.flush(String(saved.id));
+      attach.reset();
       setOpen(false);
       await list.reload();
     } catch (e) {
@@ -436,6 +442,7 @@ function ReconciliationTab({ canManage }: { canManage: boolean }) {
               <th>{t('erp.payments.external')}</th>
               <th>{t('erp.payments.variance')}</th>
               <th>{t('common.status')}</th>
+              <th>{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -447,6 +454,11 @@ function ReconciliationTab({ canManage }: { canManage: boolean }) {
                 <td className="tabular-nums text-[12.5px]">{String(r.externalMinor ?? 0)}</td>
                 <td className="tabular-nums text-[12.5px]">{String(r.varianceMinor ?? 0)}</td>
                 <td><StatusBadge status={r.matched ? 'MATCHED' : 'UNMATCHED'} label={r.matched ? t('erp.payments.matched') : t('erp.payments.unmatched')} /></td>
+                <td>
+                  <Button size="sm" onClick={() => setPreviewOf(r)} data-testid={`preview-recon-${String(r.id)}`}>
+                    {t('attach.preview')}
+                  </Button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -483,7 +495,46 @@ function ReconciliationTab({ canManage }: { canManage: boolean }) {
             <input className="oryx-input" value={form.externalMinor} onChange={(e) => setForm({ ...form, externalMinor: e.target.value })} data-testid="recon-external" />
           </Field>
         </div>
+        <div className="mt-4 border-t border-[var(--border)] pt-3">
+          <AttachmentField
+            entityType="PAYMENT_RECONCILIATION"
+            entityId={null}
+            value={attach.items}
+            onChange={attach.setItems}
+            registerFlush={attach.register}
+            canWrite={canManage}
+            label={t('erp.payments.reconAttachments')}
+            hint={t('erp.payments.reconAttachmentsHint')}
+            testId="recon-attachments"
+          />
+        </div>
       </Modal>
+
+      <RecordPreview
+        open={previewOf !== null}
+        onClose={() => setPreviewOf(null)}
+        title={previewOf ? `${t('erp.payments.reconciliation')} — ${String(previewOf.provider ?? '')}` : ''}
+        subtitle={previewOf ? new Date(String(previewOf.businessDate)).toLocaleDateString() : undefined}
+        entityType="PAYMENT_RECONCILIATION"
+        entityId={previewOf ? String(previewOf.id) : null}
+        canWriteAttachments={canManage}
+        testId="recon-preview"
+        fields={
+          previewOf
+            ? [
+                { label: t('erp.payments.businessDate'), value: new Date(String(previewOf.businessDate)).toLocaleDateString() },
+                { label: t('erp.payments.provider'), value: String(previewOf.provider ?? '') },
+                { label: t('erp.payments.internalCount'), value: String(previewOf.internalCount ?? 0) },
+                { label: t('erp.payments.internal'), value: String(previewOf.internalMinor ?? 0) },
+                { label: t('erp.payments.externalCount'), value: String(previewOf.externalCount ?? 0) },
+                { label: t('erp.payments.external'), value: String(previewOf.externalMinor ?? 0) },
+                { label: t('erp.payments.variance'), value: String(previewOf.varianceMinor ?? 0) },
+                { label: t('common.status'), value: previewOf.matched ? t('erp.payments.matched') : t('erp.payments.unmatched') },
+                { label: t('common.created'), value: String(previewOf.createdAt ?? '').slice(0, 10) },
+              ]
+            : []
+        }
+      />
     </Card>
   );
 }

@@ -310,7 +310,7 @@ function ReserveModal({
   const [error, setError] = useState<string | null>(null);
   const [reservationId, setReservationId] = useState<string | null>(null);
   const [line, setLine] = useState({ productId: '', quantity: '1', warehouseId: '' });
-  const attach = useFormAttachments();
+  const attach = useFormAttachments({ entityType: 'JOB_CARD', entityId: job?.id ?? null });
 
   const reserve = async () => {
     if (!job) return;
@@ -765,6 +765,7 @@ function RequestsTab({ canManage }: { canManage: boolean }) {
   const { t } = useUi();
   const list = useAsync(() => api.serviceRequests(), []);
   const providers = useAsync(() => api.marketplaceProviders({ status: 'APPROVED' }), []);
+  const [previewOf, setPreviewOf] = useState<ServiceRequestDto | null>(null);
   return (
     <Card>
       <div className="border-b border-[var(--border)] p-4"><p className="oryx-panel-title m-0">{t('erp.automotive.serviceRequests')}</p></div>
@@ -782,11 +783,16 @@ function RequestsTab({ canManage }: { canManage: boolean }) {
                 <td className="text-[12.5px]">{r.provider?.nameEn ?? '—'}</td>
                 <td><StatusBadge status={r.status} label={r.status} /></td>
                 <td>
-                  {canManage && r.status === 'NEW' && (providers.data?.items.length ?? 0) > 0 ? (
-                    <Button size="sm" data-testid={`assign-request-${r.requestNumber}`} onClick={async () => { await api.assignServiceRequest(r.id, providers.data!.items[0].id); await list.reload(); }}>
-                      {t('erp.automotive.assign')}
+                  <div className="flex flex-wrap gap-2">
+                    {canManage && r.status === 'NEW' && (providers.data?.items.length ?? 0) > 0 ? (
+                      <Button size="sm" data-testid={`assign-request-${r.requestNumber}`} onClick={async () => { await api.assignServiceRequest(r.id, providers.data!.items[0].id); await list.reload(); }}>
+                        {t('erp.automotive.assign')}
+                      </Button>
+                    ) : null}
+                    <Button size="sm" onClick={() => setPreviewOf(r)} data-testid={`preview-request-${r.requestNumber}`}>
+                      {t('attach.preview')}
                     </Button>
-                  ) : null}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -794,6 +800,28 @@ function RequestsTab({ canManage }: { canManage: boolean }) {
         </TableShell>
       )}
       <span className="hidden">{money(0)}</span>
+
+      <RecordPreview
+        open={previewOf !== null}
+        onClose={() => setPreviewOf(null)}
+        title={previewOf ? previewOf.requestNumber : ''}
+        subtitle={previewOf ? previewOf.categoryKey : undefined}
+        entityType="SERVICE_REQUEST"
+        entityId={previewOf?.id ?? null}
+        canWriteAttachments={canManage}
+        testId="request-preview"
+        fields={
+          previewOf
+            ? [
+                { label: t('erp.automotive.requestNumber'), value: previewOf.requestNumber },
+                { label: t('erp.automotive.category'), value: previewOf.categoryKey },
+                { label: t('erp.automotive.provider'), value: previewOf.provider?.nameEn ?? '—' },
+                { label: t('common.status'), value: previewOf.status },
+                { label: t('common.created'), value: String(previewOf.createdAt ?? '').slice(0, 10) },
+              ]
+            : []
+        }
+      />
     </Card>
   );
 }

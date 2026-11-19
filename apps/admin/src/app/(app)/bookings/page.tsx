@@ -213,6 +213,7 @@ function ResourcesTab({ canManage }: { canManage: boolean }) {
   const { t } = useUi();
   const list = useAsync(() => api.bookingResources(), []);
   const [open, setOpen] = useState(false);
+  const [previewOf, setPreviewOf] = useState<ResourceRow | null>(null);
   const [form, setForm] = useState({ code: '', nameEn: '', nameAr: '', kind: 'BAY', capacity: '1' });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -265,6 +266,7 @@ function ResourcesTab({ canManage }: { canManage: boolean }) {
               <th>{t('erp.booking.kind')}</th>
               <th>{t('erp.booking.capacity')}</th>
               <th>{t('common.status')}</th>
+              <th>{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -275,6 +277,11 @@ function ResourcesTab({ canManage }: { canManage: boolean }) {
                 <td className="text-[12.5px]">{r.kind}</td>
                 <td className="tabular-nums text-[12.5px]">{r.capacity}</td>
                 <td><Badge tone={r.active ? 'success' : 'neutral'}>{r.active ? t('common.active') : t('common.inactive')}</Badge></td>
+                <td>
+                  <Button size="sm" onClick={() => setPreviewOf(r)} data-testid={`preview-resource-${r.code}`}>
+                    {t('attach.preview')}
+                  </Button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -321,6 +328,29 @@ function ResourcesTab({ canManage }: { canManage: boolean }) {
           <AttachmentField entityType="BOOKING_RESOURCE" entityId={null} value={attach.items} onChange={attach.setItems} registerFlush={attach.register} canWrite testId="new-resource-attachments" />
         </div>
       </Modal>
+
+      <RecordPreview
+        open={previewOf !== null}
+        onClose={() => setPreviewOf(null)}
+        title={previewOf ? `${previewOf.code} — ${previewOf.nameEn}` : ''}
+        subtitle={previewOf ? previewOf.kind : undefined}
+        entityType="BOOKING_RESOURCE"
+        entityId={previewOf?.id ?? null}
+        canWriteAttachments={canManage}
+        testId="resource-preview"
+        fields={
+          previewOf
+            ? [
+                { label: t('erp.booking.code'), value: previewOf.code },
+                { label: t('erp.booking.nameEn'), value: previewOf.nameEn },
+                { label: t('erp.booking.nameAr'), value: previewOf.nameAr },
+                { label: t('erp.booking.kind'), value: previewOf.kind },
+                { label: t('erp.booking.capacity'), value: String(previewOf.capacity) },
+                { label: t('common.status'), value: previewOf.active ? t('common.active') : t('common.inactive') },
+              ]
+            : []
+        }
+      />
     </Card>
   );
 }

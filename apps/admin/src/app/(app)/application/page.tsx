@@ -5,7 +5,9 @@ import type { AppVersionDto, FeatureFlagDto } from '@oryx/shared';
 import { api } from '@/lib/api';
 import { useUi } from '@/lib/ui-context';
 import { useAsync } from '@/lib/hooks';
-import { Badge, Card, EmptyState, SectionHeader, Skeleton, TableShell } from '@/components/ui';
+import { useState } from 'react';
+import { RecordPreview } from '@/components/record-preview';
+import { Button, Badge, Card, EmptyState, SectionHeader, Skeleton, TableShell } from '@/components/ui';
 
 function ApplicationCmsPageInner() {
   const { t, locale } = useUi();
@@ -13,6 +15,8 @@ function ApplicationCmsPageInner() {
   const versions = useAsync(() => api.appVersions(), []);
   const categories = useAsync(() => api.serviceCategories(), []);
   const templates = useAsync(() => api.notificationTemplates(), []);
+  const [previewFlag, setPreviewFlag] = useState<FeatureFlagDto | null>(null);
+  const [previewVersion, setPreviewVersion] = useState<AppVersionDto | null>(null);
 
   return (
     <div className="flex flex-col gap-5" data-testid="application-page">
@@ -48,6 +52,7 @@ function ApplicationCmsPageInner() {
                 <th>{t('app.audience')}</th>
                 <th>{t('app.rollout')}</th>
                 <th>{t('common.status')}</th>
+                <th>{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -61,6 +66,11 @@ function ApplicationCmsPageInner() {
                     <Badge tone={f.enabled ? 'success' : 'neutral'}>
                       {f.enabled ? t('app.enabled') : t('app.disabled')}
                     </Badge>
+                  </td>
+                  <td>
+                    <Button size="sm" onClick={() => setPreviewFlag(f)} data-testid={`preview-flag-${f.key}`}>
+                      {t('attach.preview')}
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -89,6 +99,7 @@ function ApplicationCmsPageInner() {
                 <th>{t('app.build')}</th>
                 <th>{t('app.minSupported')}</th>
                 <th>{t('common.status')}</th>
+                <th>{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -104,6 +115,11 @@ function ApplicationCmsPageInner() {
                     <Badge tone={v.isActive ? 'success' : 'neutral'}>
                       {v.isActive ? t('common.active') : t('common.inactive')}
                     </Badge>
+                  </td>
+                  <td>
+                    <Button size="sm" onClick={() => setPreviewVersion(v)} data-testid={`preview-version-${v.id}`}>
+                      {t('attach.preview')}
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -150,6 +166,48 @@ function ApplicationCmsPageInner() {
           </div>
         </Card>
       </div>
+
+      <RecordPreview
+        open={previewFlag !== null}
+        onClose={() => setPreviewFlag(null)}
+        title={previewFlag ? previewFlag.key : ''}
+        subtitle={previewFlag ? (locale === 'ar' ? previewFlag.nameAr : previewFlag.nameEn) : undefined}
+        entityType="FEATURE_FLAG"
+        entityId={previewFlag?.id ?? null}
+        testId="flag-preview"
+        fields={
+          previewFlag
+            ? [
+                { label: t('common.code'), value: previewFlag.key },
+                { label: t('common.name'), value: locale === 'ar' ? previewFlag.nameAr : previewFlag.nameEn },
+                { label: t('app.audience'), value: previewFlag.audience },
+                { label: t('app.rollout'), value: `${previewFlag.rolloutPercentage}%` },
+                { label: t('common.status'), value: previewFlag.enabled ? t('app.enabled') : t('app.disabled') },
+              ]
+            : []
+        }
+      />
+
+      <RecordPreview
+        open={previewVersion !== null}
+        onClose={() => setPreviewVersion(null)}
+        title={previewVersion ? `${previewVersion.platform} ${previewVersion.version}` : ''}
+        subtitle={previewVersion ? `${previewVersion.buildNumber}` : undefined}
+        entityType="APP_VERSION"
+        entityId={previewVersion?.id ?? null}
+        testId="version-preview"
+        fields={
+          previewVersion
+            ? [
+                { label: t('app.platform'), value: previewVersion.platform },
+                { label: t('app.version'), value: previewVersion.version },
+                { label: t('app.build'), value: previewVersion.buildNumber },
+                { label: t('app.minSupported'), value: previewVersion.minSupportedVersion },
+                { label: t('common.status'), value: previewVersion.isActive ? t('common.active') : t('common.inactive') },
+              ]
+            : []
+        }
+      />
     </div>
   );
 }

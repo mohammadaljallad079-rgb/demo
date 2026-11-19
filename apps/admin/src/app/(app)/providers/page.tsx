@@ -207,7 +207,7 @@ function ProviderModal({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [listing, setListing] = useState<ListingRow | null>(null);
-  const attach = useFormAttachments();
+  const attach = useFormAttachments({ entityType: 'MARKETPLACE_PROVIDER', entityId: provider?.id ?? null });
 
   async function decide(decision: 'APPROVED' | 'REJECTED' | 'SUSPENDED') {
     if (!provider) return;

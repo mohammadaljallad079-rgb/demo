@@ -22,9 +22,11 @@ import {
   StatusBadge,
   TableShell,
 } from '@/components/ui';
-import type { PartsReservationDto } from '@oryx/shared';
+import type { PartsReservationDto, ProductDto } from '@oryx/shared';
 
 type Tab = 'catalog' | 'references' | 'compatibility' | 'reservations';
+
+type ProductRow = ProductDto;
 
 export default function SparePartsPage() {
   const { t } = useUi();
@@ -74,6 +76,7 @@ function CatalogTab() {
   const { t } = useUi();
   const [search, setSearch] = useState('');
   const list = useAsync(() => api.products({ search: search || undefined }), [search]);
+  const [detail, setDetail] = useState<ProductRow | null>(null);
   return (
     <Card>
       <div className="flex flex-wrap items-end gap-3 border-b border-[var(--border)] p-4">
@@ -94,6 +97,7 @@ function CatalogTab() {
               <th>{t('erp.inventory.salesPrice')}</th>
               <th>{t('erp.inventory.costPrice')}</th>
               <th>{t('erp.parts.reorderLevel')}</th>
+              <th>{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -104,11 +108,38 @@ function CatalogTab() {
                 <td className="tabular-nums text-[12.5px]">{(p.salesPriceMinor / 100).toFixed(2)}</td>
                 <td className="tabular-nums text-[12.5px]">{(p.costPriceMinor / 100).toFixed(2)}</td>
                 <td className="tabular-nums text-[12.5px]">{(p.reorderLevel / 10000).toFixed(0)}</td>
+                <td>
+                  <Button size="sm" onClick={() => setDetail(p)} data-testid={`preview-catalog-${p.sku}`}>
+                    {t('attach.preview')}
+                  </Button>
+                </td>
               </tr>
             ))}
           </tbody>
         </TableShell>
       )}
+
+      <RecordPreview
+        open={detail !== null}
+        onClose={() => setDetail(null)}
+        title={detail ? `${detail.sku} — ${detail.nameEn}` : ''}
+        subtitle={detail?.nameAr ?? undefined}
+        entityType="PRODUCT"
+        entityId={detail?.id ?? null}
+        testId="part-catalog-preview"
+        fields={
+          detail
+            ? [
+                { label: t('erp.inventory.sku'), value: detail.sku },
+                { label: `${t('common.name')} (EN)`, value: detail.nameEn },
+                { label: `${t('common.name')} (AR)`, value: detail.nameAr },
+                { label: t('erp.inventory.salesPrice'), value: (detail.salesPriceMinor / 100).toFixed(2) },
+                { label: t('erp.inventory.costPrice'), value: (detail.costPriceMinor / 100).toFixed(2) },
+                { label: t('erp.parts.reorderLevel'), value: String(detail.reorderLevel / 10000) },
+              ]
+            : []
+        }
+      />
     </Card>
   );
 }

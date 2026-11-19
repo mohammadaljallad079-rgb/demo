@@ -300,7 +300,7 @@ function RoleEditor({
     return map;
   }, [catalog]);
 
-  const attach = useFormAttachments();
+  const attach = useFormAttachments({ entityType: 'ROLE', entityId: role?.id ?? null });
 
   async function submit() {
     setBusy(true);

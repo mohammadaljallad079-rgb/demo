@@ -589,6 +589,59 @@ test.describe('Execution 06 — platform CMS preview', () => {
     await expect(preview.getByText('slug', { exact: false }).first()).toBeVisible();
     await expect(page.getByTestId('cms-page-preview-print')).toBeVisible();
   });
+
+  test('12b. the website page form carries its attachments and saves them with the record', async ({ page }) => {
+    // A platform page belongs to no tenant, so its attachments must upload
+    // without a company context. The form is where they are added.
+    const token = await apiToken(page, SUPER_ADMIN);
+    const slug = `${PREFIX.toLowerCase()}-cms-${Date.now()}`;
+    const saved = await fetch(`${API}/cms/pages`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, locale: 'en', title: `${PREFIX} CMS page`, body: 'Terms', status: 'DRAFT' }),
+    });
+    expect(saved.ok, `page creation failed with ${saved.status}`).toBe(true);
+    const pageId = ((await saved.json()) as { id: string }).id;
+
+    try {
+      await page.goto('/website');
+      await expect(page.getByTestId('cms-pages-table')).toBeVisible({ timeout: 20_000 });
+      await page.getByTestId('new-cms-page').click();
+
+      const field = page.getByTestId('cms-page-attachments');
+      await expect(field).toBeVisible({ timeout: 20_000 });
+      await page.getByTestId('cms-page-attachments-input').setInputFiles({
+        name: 'terms.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from('platform attachment'),
+      });
+      // A picked file is held as a draft until the form saves.
+      await expect(page.getByTestId('cms-page-attachments-draft')).toHaveCount(1);
+
+      await page.getByTestId('cms-slug').fill(slug);
+      // The fixture row is English; the form defaults to Arabic, and the slug
+      // is unique per locale, so the locale has to match or the save creates a
+      // second row and the file lands on the wrong record.
+      await page.getByTestId('cms-locale').selectOption('en');
+      await page.getByTestId('cms-title').fill(`${PREFIX} CMS page`);
+      await page.getByTestId('cms-body').fill('Terms');
+      await page.getByTestId('save-cms-page').click();
+      await expect(page.locator('.oryx-modal')).toHaveCount(0, { timeout: 20_000 });
+
+      // The file was attached to the saved record, not dropped on close.
+      const list = await fetch(`${API}/attachments?entityType=CMS_PAGE&entityId=${pageId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await list.json()) as { total: number; items: Array<{ id: string; companyId: string | null }> };
+      expect(body.total).toBe(1);
+      expect(body.items[0].companyId).toBeNull();
+      for (const item of body.items) {
+        await deleteQuietly(token, `/attachments/${item.id}`);
+      }
+    } finally {
+      await deleteQuietly(token, `/cms/pages/${pageId}`);
+    }
+  });
 });
 
 test.describe('Execution 06 — platform record previews', () => {

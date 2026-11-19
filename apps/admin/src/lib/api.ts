@@ -1,6 +1,7 @@
 import type {
   AccountingReportDto,
   AgingRowDto,
+  ApiClientDto,
   AppVersionDto,
   AuditLogDto,
   BalanceSheetDto,
@@ -612,9 +613,9 @@ export const api = {
     request<Record<string, unknown>>('/cms/app-versions', { method: 'PUT', body }),
   serviceCategories: () => request<Array<Record<string, unknown>>>('/cms/service-categories'),
   notificationTemplates: () => request<Array<Record<string, unknown>>>('/cms/notification-templates'),
-  apiClients: () => request<Array<Record<string, unknown>>>('/cms/api-clients'),
+  apiClients: () => request<ApiClientDto[]>('/cms/api-clients'),
   createApiClient: (body: Record<string, unknown>) =>
-    request<Record<string, unknown>>('/cms/api-clients', { method: 'POST', body }),
+    request<ApiClientDto & { secret?: string }>('/cms/api-clients', { method: 'POST', body }),
   revokeApiClient: (id: string) =>
     request<{ ok: boolean }>(`/cms/api-clients/${id}/revoke`, { method: 'POST', body: {} }),
 

@@ -5,6 +5,8 @@ import type { CompanyDto, PlanDto, SubscriptionDto } from '@oryx/shared';
 import { api } from '@/lib/api';
 import { useUi } from '@/lib/ui-context';
 import { useAsync } from '@/lib/hooks';
+import { useFormAttachments } from '@/lib/use-form-attachments';
+import { AttachmentField } from '@/components/attachments';
 import { RecordPreview } from '@/components/record-preview';
 import { Icon } from '@/components/icons';
 import {
@@ -188,6 +190,10 @@ function AssignModal({
   const [period, setPeriod] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const attach = useFormAttachments({
+    entityType: 'SUBSCRIPTION',
+    entityId: company?.subscription?.id ?? null,
+  });
 
   useEffect(() => {
     if (!company) return;
@@ -201,7 +207,9 @@ function AssignModal({
     setBusy(true);
     setError(null);
     try {
-      await api.assignSubscription(company.id, { planId, billingPeriod: period });
+      const saved = await api.assignSubscription(company.id, { planId, billingPeriod: period });
+      await attach.flush(saved.id);
+      attach.reset();
       await onDone();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.error'));
@@ -257,6 +265,19 @@ function AssignModal({
             <option value="ANNUAL">{t('plans.annual')}</option>
           </select>
         </Field>
+      </div>
+      <div className="mt-4 border-t border-[var(--border)] pt-3">
+        <AttachmentField
+          entityType="SUBSCRIPTION"
+          entityId={company?.subscription?.id ?? null}
+          value={attach.items}
+          onChange={attach.setItems}
+          registerFlush={attach.register}
+          canWrite
+          label={t('attach.title')}
+          hint={t('subscriptions.attachmentHint')}
+          testId="subscription-attachments"
+        />
       </div>
       <p className="oryx-faint mt-3 text-[11.5px]">{t('plans.note')}</p>
     </Modal>

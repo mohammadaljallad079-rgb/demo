@@ -21,6 +21,12 @@ export interface AttachmentEntityDefinition {
   writePermission: string;
   /** Extra permission required to read a row flagged confidential. */
   confidentialPermission?: string;
+  /**
+   * `platform` for content that belongs to the platform itself (the website
+   * CMS), which has no tenant. Those rows are stored with a null `companyId`
+   * and are gated by permission alone; `company` rows always carry a tenant.
+   */
+  scope?: 'company' | 'platform';
 }
 
 const E = (
@@ -31,6 +37,7 @@ const E = (
   writePermission: string,
   moduleKey?: string,
   confidentialPermission?: string,
+  scope: 'company' | 'platform' = 'company',
 ): AttachmentEntityDefinition => ({
   entityType,
   labelEn,
@@ -39,6 +46,7 @@ const E = (
   readPermission,
   writePermission,
   confidentialPermission,
+  scope,
 });
 
 export const ATTACHMENT_ENTITIES: readonly AttachmentEntityDefinition[] = [
@@ -49,8 +57,20 @@ export const ATTACHMENT_ENTITIES: readonly AttachmentEntityDefinition[] = [
   E('ROLE', 'Role', 'دور', 'company.role.read', 'company.role.update'),
   // CMS content is platform-global, so its only gate is the CMS permission. A
   // tenant read permission here would lock out the sole principal who manages it.
-  E('CMS_PAGE', 'Website page', 'صفحة الموقع', 'platform.cms.manage', 'platform.cms.manage'),
-  E('CMS_BANNER', 'Website banner', 'بانر الموقع', 'platform.cms.manage', 'platform.cms.manage'),
+  E('CMS_PAGE', 'Website page', 'صفحة الموقع', 'platform.cms.manage', 'platform.cms.manage', undefined, undefined, 'platform'),
+  E('CMS_BANNER', 'Website banner', 'بانر الموقع', 'platform.cms.manage', 'platform.cms.manage', undefined, undefined, 'platform'),
+  // Platform administration records. A plan, an API client and an app version
+  // belong to the platform itself; a subscription and a support session are
+  // managed exclusively by a platform principal, and no tenant role can hold
+  // their permission. Storing their files without a tenant keeps the platform
+  // principal (who has no company scope) able to use the same field, and grants
+  // nothing a tenant could not already reach through the same permission.
+  E('PLAN', 'Subscription plan', 'خطة اشتراك', 'platform.plan.manage', 'platform.plan.manage', undefined, undefined, 'platform'),
+  E('SUBSCRIPTION', 'Subscription', 'اشتراك', 'platform.subscription.manage', 'platform.subscription.manage', undefined, undefined, 'platform'),
+  E('SUPPORT_SESSION', 'Support session', 'جلسة دعم', 'platform.support.access', 'platform.support.access', undefined, undefined, 'platform'),
+  E('API_CLIENT', 'API client', 'عميل API', 'platform.api.manage', 'platform.api.manage', undefined, undefined, 'platform'),
+  E('FEATURE_FLAG', 'Feature flag', 'علم ميزة', 'platform.api.manage', 'platform.api.manage', undefined, undefined, 'platform'),
+  E('APP_VERSION', 'App version', 'إصدار التطبيق', 'platform.api.manage', 'platform.api.manage', undefined, undefined, 'platform'),
 
   // ---------------------------------------------------------------- finance
   E('JOURNAL_ENTRY', 'Journal entry', 'قيد يومية', 'erp.accounting.read', 'erp.accounting.journal.post', 'financial_accounting'),
@@ -117,6 +137,7 @@ export const ATTACHMENT_ENTITIES: readonly AttachmentEntityDefinition[] = [
   E('PROVIDER_SERVICE_LISTING', 'Provider listing', 'عرض خدمة', 'erp.provider_portal.read', 'erp.marketplace.listing.manage', 'provider_portal'),
   E('SERVICE_REQUEST', 'Service request', 'طلب خدمة', 'erp.provider_portal.read', 'erp.marketplace.request.manage', 'provider_portal'),
   E('PROVIDER_SETTLEMENT', 'Provider settlement', 'تسوية مزود', 'erp.payments.read', 'erp.marketplace.commission.manage', 'payments'),
+  E('PAYMENT_RECONCILIATION', 'Payment reconciliation', 'مطابقة مدفوعات', 'erp.payments.read', 'erp.payments.reconcile', 'payments'),
   E('PAYMENT_INTENT', 'Payment intent', 'نية دفع', 'erp.payments.read', 'erp.payments.manage', 'payments'),
   E('REFUND', 'Refund', 'استرداد', 'erp.payments.read', 'erp.payments.manage', 'payments'),
   E('CUSTOMER_ACCOUNT', 'Customer account', 'حساب عميل', 'erp.customer_portal.read', 'erp.customer_portal.read', 'customer_portal'),

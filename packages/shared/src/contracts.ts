@@ -1429,7 +1429,8 @@ export interface CustomerCapabilitiesResponse {
 /** One stored attachment as the API returns it. Values never leave the API. */
 export interface AttachmentDto {
   id: string;
-  companyId: string;
+  /** Null for a platform-global record such as a website page. */
+  companyId: string | null;
   entityType: string;
   entityId: string;
   fileName: string;

@@ -25,7 +25,8 @@ export interface UploadedFileLike {
 
 export interface AttachmentDto {
   id: string;
-  companyId: string;
+  /** Null for a platform-global record such as a website page. */
+  companyId: string | null;
   entityType: string;
   entityId: string;
   fileName: string;
@@ -49,6 +50,11 @@ const MAX_FILES_PER_REQUEST = 10;
  * `@oryx/shared` decides which permissions apply, the request's company scope
  * decides which tenant the row belongs to, and confidentiality is enforced on
  * read rather than hidden in the UI.
+ *
+ * A catalogue entry declared with `scope: 'platform'` (the website CMS) belongs
+ * to no tenant: its rows carry a null `companyId`, are gated by permission
+ * alone, and are readable without a company context. Everything else is tenant
+ * scoped and requires one.
  */
 @Injectable()
 export class AttachmentsService {
@@ -64,6 +70,25 @@ export class AttachmentsService {
     const def = getAttachmentEntity(entityType);
     if (!def) throw badRequest(ERROR_CODES.VALIDATION_FAILED, `Unknown attachment entity type: ${entityType}`);
     return def;
+  }
+
+  private isPlatform(def: AttachmentEntityDefinition): boolean {
+    return def.scope === 'platform';
+  }
+
+  /**
+   * The tenant a row belongs to, or null for a platform-global record.
+   *
+   * A platform record never resolves a company: a platform administrator has no
+   * tenant scope, and demanding one would make the CMS attachments unusable.
+   */
+  private async scopeCompanyId(
+    def: AttachmentEntityDefinition,
+    principal: RequestPrincipal,
+  ): Promise<string | null> {
+    if (this.isPlatform(def)) return null;
+    const { companyId } = await this.context.resolveCompanyScope(principal);
+    return companyId;
   }
 
   private canSeeConfidential(def: AttachmentEntityDefinition, principal: RequestPrincipal): boolean {
@@ -86,7 +111,7 @@ export class AttachmentsService {
   async list(entityType: string, entityId: string, principal: RequestPrincipal): Promise<{ items: AttachmentDto[]; total: number }> {
     const def = this.definition(entityType);
     this.assertRead(def, principal);
-    const { companyId } = await this.context.resolveCompanyScope(principal);
+    const companyId = await this.scopeCompanyId(def, principal);
     const canSeeConfidential = this.canSeeConfidential(def, principal);
     const rows = await this.prisma.entityAttachment.findMany({
       where: { companyId, entityType, entityId, ...(canSeeConfidential ? {} : { isConfidential: false }) },
@@ -114,7 +139,7 @@ export class AttachmentsService {
   ): Promise<{ items: AttachmentDto[] }> {
     const def = this.definition(entityType);
     this.assertWrite(def, principal);
-    const { companyId } = await this.context.resolveCompanyScope(principal);
+    const companyId = await this.scopeCompanyId(def, principal);
     if (files.length === 0) throw badRequest(ERROR_CODES.VALIDATION_FAILED, 'No file was uploaded.');
     if (files.length > MAX_FILES_PER_REQUEST) {
       throw badRequest(ERROR_CODES.VALIDATION_FAILED, `At most ${MAX_FILES_PER_REQUEST} files may be uploaded at once.`);
@@ -282,7 +307,7 @@ export class AttachmentsService {
    * the real row without re-uploading them.
    */
   async reattach(
-    companyId: string,
+    companyId: string | null,
     entityType: string,
     fromEntityId: string,
     toEntityId: string,
@@ -297,7 +322,7 @@ export class AttachmentsService {
 
   /** Attachments for a set of entities in one query (preview screens). */
   async listForEntities(
-    companyId: string,
+    companyId: string | null,
     entityType: string,
     entityIds: string[],
     canSeeConfidential: boolean,
@@ -327,7 +352,7 @@ export class AttachmentsService {
     mode: 'read' | 'write',
   ): Promise<{
     id: string;
-    companyId: string;
+    companyId: string | null;
     entityType: string;
     entityId: string;
     fileName: string;
@@ -339,19 +364,31 @@ export class AttachmentsService {
     uploadedById: string | null;
     createdAt: Date;
   }> {
-    const { companyId } = await this.context.resolveCompanyScope(principal);
-    const row = await this.prisma.entityAttachment.findFirst({ where: { id, companyId } });
+    const row = await this.prisma.entityAttachment.findUnique({ where: { id } });
     if (!row) throw notFound(ERROR_CODES.RESOURCE_NOT_FOUND, 'Attachment not found.');
     const def = this.definition(row.entityType);
     if (mode === 'write') this.assertWrite(def, principal);
     else this.assertRead(def, principal);
+    // The row is looked up by id, so the tenant boundary has to be re-checked
+    // against the caller's scope rather than assumed from the query.
+    if (this.isPlatform(def)) {
+      if (row.companyId !== null) throw notFound(ERROR_CODES.RESOURCE_NOT_FOUND, 'Attachment not found.');
+    } else {
+      const companyId = await this.scopeCompanyId(def, principal);
+      if (row.companyId !== companyId) throw notFound(ERROR_CODES.RESOURCE_NOT_FOUND, 'Attachment not found.');
+    }
     if (row.isConfidential && !this.canSeeConfidential(def, principal)) {
       throw forbidden(ERROR_CODES.FORBIDDEN_PERMISSION, 'This attachment is confidential.');
     }
     return row;
   }
 
-  private async clearOtherPrimary(companyId: string, entityType: string, entityId: string, keepId: string): Promise<void> {
+  private async clearOtherPrimary(
+    companyId: string | null,
+    entityType: string,
+    entityId: string,
+    keepId: string,
+  ): Promise<void> {
     await this.prisma.entityAttachment.updateMany({
       where: { companyId, entityType, entityId, isPrimary: true, id: { not: keepId } },
       data: { isPrimary: false },
@@ -361,7 +398,7 @@ export class AttachmentsService {
   private toDto(
     row: {
       id: string;
-      companyId: string;
+      companyId: string | null;
       entityType: string;
       entityId: string;
       fileName: string;

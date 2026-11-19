@@ -981,7 +981,7 @@ function CloseSessionModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [counted, setCounted] = useState('');
-  const attach = useFormAttachments();
+  const attach = useFormAttachments({ entityType: 'CASHIER_SESSION', entityId: session?.id ?? null });
 
   const submit = async () => {
     if (!session) return;

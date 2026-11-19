@@ -5,6 +5,8 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import { useUi } from '@/lib/ui-context';
 import { useAsync } from '@/lib/hooks';
+import { useFormAttachments } from '@/lib/use-form-attachments';
+import { AttachmentField } from '@/components/attachments';
 import { RecordPreview } from '@/components/record-preview';
 import { Icon } from '@/components/icons';
 import {
@@ -171,13 +173,17 @@ function OpenSupportModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const attach = useFormAttachments();
 
   async function submit() {
     setBusy(true);
     setError(null);
     try {
       const res = await api.openSupportSession(form);
-      setSessionId(String(res.supportSessionId ?? res.id ?? ''));
+      const id = String(res.supportSessionId ?? res.id ?? '');
+      setSessionId(id);
+      await attach.flush(id);
+      attach.reset();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.error'));
     } finally {
@@ -274,6 +280,19 @@ function OpenSupportModal({
                   data-testid="support-reason"
                 />
               </Field>
+            </div>
+            <div className="sm:col-span-2 border-t border-[var(--border)] pt-3">
+              <AttachmentField
+                entityType="SUPPORT_SESSION"
+                entityId={null}
+                value={attach.items}
+                onChange={attach.setItems}
+                registerFlush={attach.register}
+                canWrite
+                label={t('support.attachments')}
+                hint={t('support.attachmentsHint')}
+                testId="support-attachments"
+              />
             </div>
           </div>
         </>

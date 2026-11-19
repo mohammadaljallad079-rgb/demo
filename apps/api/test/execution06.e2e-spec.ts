@@ -563,5 +563,64 @@ describe('ORYX Execution 06 (e2e)', () => {
       const list = await erp<{ total: number }>(`/attachments?entityType=WORK_ORDER&entityId=${order.body.id}`);
       expect(list.body.total).toBe(1);
     });
+
+    it('stores a platform-global website attachment without a tenant', async () => {
+      // The CMS belongs to the platform, not to a company, so its attachments
+      // must be usable by the platform administrator who has no company scope.
+      const page = await call<{ id: string }>(ctx.base, '/cms/pages', {
+        method: 'PUT',
+        token: superToken,
+        body: { slug: `${code.toLowerCase()}-terms`, locale: 'en', title: 'E06 Terms', body: 'Body', status: 'DRAFT' },
+      });
+      expect(page.status).toBe(200);
+
+      // A rerun reuses the same page, so start from an empty attachment list.
+      const existing = await call<{ items: Array<{ id: string }> }>(
+        ctx.base,
+        `/attachments?entityType=CMS_PAGE&entityId=${page.body.id}`,
+        { token: superToken },
+      );
+      for (const row of existing.body.items) {
+        await call(ctx.base, `/attachments/${row.id}`, { method: 'DELETE', token: superToken });
+      }
+
+      const form = new FormData();
+      form.set('entityType', 'CMS_PAGE');
+      form.set('entityId', page.body.id);
+      form.append('files', new Blob([new Uint8Array(Buffer.from('terms'))], { type: 'text/plain' }), 'terms.txt');
+      const up = await fetch(`${ctx.base}/api/v1/attachments`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${superToken}` },
+        body: form,
+      });
+      expect(up.status).toBe(201);
+      const created = (await up.json()) as { items: Array<{ id: string; companyId: string | null }> };
+      expect(created.items[0].companyId).toBeNull();
+
+      const list = await call<{ total: number }>(
+        ctx.base,
+        `/attachments?entityType=CMS_PAGE&entityId=${page.body.id}`,
+        { token: superToken },
+      );
+      expect(list.status).toBe(200);
+      expect(list.body.total).toBe(1);
+
+      const content = await fetch(`${ctx.base}/api/v1/attachments/${created.items[0].id}/content`, {
+        headers: { Authorization: `Bearer ${superToken}` },
+      });
+      expect(content.status).toBe(200);
+      expect(await content.text()).toBe('terms');
+
+      // A tenant principal cannot reach a platform row: it holds no
+      // `platform.cms.manage`, so the permission gate refuses it first.
+      const tenantRead = await fetch(`${ctx.base}/api/v1/attachments/${created.items[0].id}/content`, {
+        headers: { Authorization: `Bearer ${token}`, 'x-oryx-company-id': tenantId },
+      });
+      expect(tenantRead.status).toBe(403);
+
+      const removed = await call(ctx.base, `/attachments/${created.items[0].id}`, { method: 'DELETE', token: superToken });
+      expect(removed.status).toBe(200);
+      await call(ctx.base, `/cms/pages/${page.body.id}`, { method: 'DELETE', token: superToken });
+    });
   });
 });
