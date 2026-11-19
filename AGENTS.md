@@ -300,6 +300,21 @@ pnpm --filter @oryx/admin test:ui   # Playwright (needs both services running)
   set the refresh cookie, and `CsrfGuard` rejects any unsafe method carrying that
   cookie without a matching `x-oryx-csrf` header. The refresh branch above it
   echoes the cookie; the login branch must too.
+- **Read the CSRF cookie fresh at each call, never once per helper.** Every
+  rotation writes a *new* `oryx_csrf` cookie, so a value captured before the
+  refresh call is stale by the time the login fallback runs, and `CsrfGuard`
+  answers `403` — which the helper reports as "login status 403" and sends you
+  looking at credentials instead of cookie staleness. It fails once in a hundred
+  runs, which is worse than failing always.
+- **`tsc` does not catch a redeclaration inside `page.evaluate`.** The callback
+  is checked as its own function body, so a duplicate `const` there can pass
+  `pnpm typecheck` and still make Playwright refuse to load the spec
+  ("Identifier 'x' has already been declared"). Run `npx esbuild <file>` on a
+  spec you touched, or let CI tell you.
+- **`ubuntu-latest` is now 26.04, which Playwright will not install into.** The
+  browser job must pin `ubuntu-24.04`; the error is
+  `Playwright does not support chromium on ubuntu26.04-x64`. Only the browser
+  job needs the pin — the others are fine on `ubuntu-latest`.
 
 ### Execution 06 gotchas
 
