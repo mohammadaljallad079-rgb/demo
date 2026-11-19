@@ -45,25 +45,31 @@ them here so no one reads the rest of the plan as covering them:
    pnpm --filter @oryx/admin build
    ```
 
-2. **Two migrations must be applied, in order, before the API starts.**
+2. **Back up production before any migration.** Confirm the backup file was
+   created successfully and can be read by `pg_restore -l`. Keep the backup
+   off the release directory and restrict access: it contains production data.
+
+   ```bash
+   BACKUP="oryx-pre-e06-$(date +%Y%m%d%H%M).dump"
+   pg_dump "$DATABASE_URL" -Fc -f "$BACKUP"
+   test -s "$BACKUP" && pg_restore -l "$BACKUP" >/dev/null
+   ```
+
+   **Stop** if backup or verification fails. Do not apply migrations first.
+
+3. **Apply the two migrations in order, before starting the new API.**
 
    ```bash
    pnpm db:generate
-   pnpm db:migrate          # applies 20261119025019_… then 20261119033000_…
+   pnpm db:migrate   # migrate:deploy, not migrate:dev
+   pnpm --filter @oryx/database exec prisma migrate status
    ```
 
-   `pnpm db:migrate` must report both as applied. If it reports a drift or wants
-   to reset, **stop** — do not reset a populated database. Take a backup first
-   (see below). The first migration adds nullable or defaulted columns and two
-   new tables, so it succeeds on a populated table without a rewrite. The second
-   relaxes a `NOT NULL` and recreates one FK; it does not touch rows.
-
-3. **Take a database backup before migrating.** These are additive, but a backup
-   is what makes the rollback path in this document true rather than hopeful.
-
-   ```bash
-   pg_dump "$DATABASE_URL" -Fc -f oryx-pre-e06-$(date +%Y%m%d%H%M).dump
-   ```
+   Verify that both `20261119025019_…` and `20261119033000_…`
+   are applied and the migration status is clean. If there is drift or a
+   reset prompt, **stop**; never reset a populated production database.
+   Test the migration against a restored copy of production first when
+   combining changes from other branches.
 
 4. **Test gates before promoting.**
 
@@ -99,7 +105,7 @@ them here so no one reads the rest of the plan as covering them:
 
 ## Merge sequence
 
-The branch is 13 commits ahead of `main` with no merge conflicts expected, but
+The feature branch is ahead of `main` with no merge conflicts expected at the time of writing, but
 merge it as a merge commit rather than a squash: the migrations are dated and
 ordered, and a squash hides which commit introduced which DDL.
 
