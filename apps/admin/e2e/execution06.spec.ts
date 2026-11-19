@@ -244,6 +244,43 @@ test.describe('Execution 06 — attachments and employee file', () => {
     expect(attached.items.map((a) => a.fileName)).toContain('offer-letter.txt');
   });
 
+  test('7b. editing a record adds a file without losing the ones already on it', async ({ page }) => {
+    const employee = await createEmployee(token, 'editfiles');
+    fixture.employeeId = employee.id;
+    const existingId = await uploadFile(token, 'EMPLOYEE', employee.id, `${PREFIX}-before-edit.txt`, 'First file');
+    fixture.attachmentIds.push(existingId);
+
+    await page.goto(`/hr/employees/${employee.id}`);
+    await expect(page.getByTestId('file-personal-card')).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId('file-edit-card').click();
+
+    // The edit form seeds the list from the record, so the file on record is
+    // visible before anything is touched.
+    const field = page.getByTestId('edit-employee-attachments');
+    await expect(field).toBeVisible();
+    await expect(field).toContainText(`${PREFIX}-before-edit.txt`);
+
+    await field.getByTestId('edit-employee-attachments-input').setInputFiles({
+      name: `${PREFIX}-added-on-edit.txt`,
+      mimeType: 'text/plain',
+      buffer: Buffer.from('Added while editing'),
+    });
+    await expect(field.getByTestId('edit-employee-attachments-draft')).toBeVisible();
+
+    await page.getByTestId('file-save-card').click();
+    await expect(page.locator('.oryx-modal')).toHaveCount(0, { timeout: 30_000 });
+
+    // Both files are on the record: the edit added one and kept the other.
+    const res = await fetch(`${API}/attachments?entityType=EMPLOYEE&entityId=${employee.id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const parsed = (await res.json()) as { items: Array<{ id: string; fileName: string }> };
+    const names = parsed.items.map((a) => a.fileName);
+    expect(names).toContain(`${PREFIX}-before-edit.txt`);
+    expect(names).toContain(`${PREFIX}-added-on-edit.txt`);
+    for (const item of parsed.items) if (item.id !== existingId) fixture.attachmentIds.push(item.id);
+  });
+
   test('8. an attachment opens in the preview and downloads without leaving the page', async ({ page }) => {
     const employee = await createEmployee(token, 'previewfile');
     fixture.employeeId = employee.id;
@@ -727,14 +764,75 @@ test.describe('Execution 06 — platform record previews', () => {
   });
 
   test('15. a support session previews its scope and reason', async ({ page }) => {
-    await page.goto('/support');
-    const buttons = page.locator('[data-testid^="preview-support-"]');
-    if ((await buttons.count()) === 0) test.skip(true, 'No support session history in this database.');
-    await expect(buttons.first()).toBeVisible({ timeout: 30_000 });
-    await buttons.first().click();
+    // Open a real session so the test does not depend on leftover history, and
+    // so it exercises the same record the preview must attach files to.
+    const token = await apiToken(page, SUPER_ADMIN);
+    const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    const companies = await fetch(`${API}/companies?pageSize=1`, { headers: H });
+    expect(companies.ok, `company list failed with ${companies.status}`).toBe(true);
+    const companyList = (await companies.json()) as { items: Array<{ id: string }> };
+    expect(companyList.items.length).toBeGreaterThan(0);
 
-    const preview = page.getByTestId('support-preview');
-    await expect(preview).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId('support-preview-print')).toBeVisible();
+    const opened = await fetch(`${API}/support-sessions`, {
+      method: 'POST',
+      headers: H,
+      body: JSON.stringify({
+        companyId: companyList.items[0].id,
+        reason: `${PREFIX} preview scope check`,
+        minutes: 15,
+      }),
+    });
+    expect(opened.ok, `support open failed with ${opened.status}`).toBe(true);
+    const session = (await opened.json()) as { id: string };
+
+    try {
+      await page.goto('/support');
+      const button = page.getByTestId(`preview-support-${session.id}`);
+      await expect(button).toBeVisible({ timeout: 30_000 });
+
+      // Arm the watcher before opening: the preview fetches the record's files
+      // as soon as it mounts. Watching the request is what catches the original
+      // defect — the panel used to request the company's attachments, so a file
+      // picked there landed on the company instead of the session.
+      const request = page.waitForRequest(
+        (r) => r.url().includes('/attachments?') && r.url().includes('entityType='),
+        { timeout: 30_000 },
+      );
+      await button.click();
+
+      const preview = page.getByTestId('support-preview');
+      await expect(preview).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByTestId('support-preview-print')).toBeVisible();
+      await expect(preview).toContainText(`${PREFIX} preview scope check`);
+
+      const listed = await request;
+      expect(listed.url()).toContain('entityType=SUPPORT_SESSION');
+      expect(listed.url()).toContain(`entityId=${session.id}`);
+      expect(listed.url()).not.toContain(`entityId=${companyList.items[0].id}`);
+
+      const uploaded = await fetch(`${API}/attachments`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: (() => {
+          const form = new FormData();
+          form.set('entityType', 'SUPPORT_SESSION');
+          form.set('entityId', session.id);
+          form.append('files', new Blob(['scope note'], { type: 'text/plain' }), `${PREFIX}-support-note.txt`);
+          return form;
+        })(),
+      });
+      expect(uploaded.ok, `support upload failed with ${uploaded.status}`).toBe(true);
+      const created = (await uploaded.json()) as {
+        items: Array<{ id: string; entityType: string; entityId: string }>;
+      };
+      // The file belongs to the session, not to the company the session targets.
+      expect(created.items.every((a) => a.entityType === 'SUPPORT_SESSION')).toBe(true);
+      expect(created.items.every((a) => a.entityId === session.id)).toBe(true);
+      expect(created.items.every((a) => a.entityId !== companyList.items[0].id)).toBe(true);
+
+      for (const item of created.items) await deleteQuietly(token, `/attachments/${item.id}`);
+    } finally {
+      await deleteQuietly(token, `/support-sessions/${session.id}/end`);
+    }
   });
 });
