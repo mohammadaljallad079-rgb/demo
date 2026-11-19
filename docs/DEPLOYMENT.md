@@ -414,6 +414,15 @@ deploying. Grant the three permissions deliberately to the roles that need them.
       same photograph appears in the printed header
 - [ ] Open a website CMS page preview as a platform principal; upload a file and
       confirm the row is stored with a null `companyId`
+- [ ] Open a **subscription** preview as a platform principal and upload a file;
+      confirm the row's `entityType` is `SUBSCRIPTION`, that the print button is
+      present, and that the same file does **not** appear on that company's
+      preview
+- [ ] Open a **support session** preview and upload a file; confirm the row's
+      `entityType` is `SUPPORT_SESSION` and that the company preview is unchanged
+- [ ] Open an employee file's reports tab with a leave balance and an overtime
+      day on record; confirm the balance and the hours render, and that the
+      export button downloads a `.xlsx` file (not a `.csv`)
 - [ ] `ls -R "$UPLOAD_DIR"` shows one directory per company and the files just
       uploaded
 
