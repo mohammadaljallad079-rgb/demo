@@ -38,37 +38,56 @@ export async function apiToken(
 ): Promise<string> {
   return page.evaluate(
     async ({ api, email, password, secret }) => {
+      // Read the CSRF cookie at each call site rather than once: every rotation
+      // replaces it, so a value captured before a rotation is rejected with a
+      // 403 by CsrfGuard.
+      const csrf = () =>
+        decodeURIComponent(document.cookie.match(/oryx_csrf=([^;]*)/)?.[1] ?? '');
+
       // Prefer rotating the existing session: it needs no credentials, so it
       // does not consume the login rate limit and cannot disturb an MFA state.
-      const csrfFromCookie = decodeURIComponent(document.cookie.match(/oryx_csrf=([^;]*)/)?.[1] ?? '');
-      const rotate = await fetch(`${api}/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(csrfFromCookie ? { 'x-oryx-csrf': csrfFromCookie } : {}),
-        },
-        body: JSON.stringify({}),
-      });
-      if (rotate.ok) {
-        const rotated = (await rotate.json()) as { accessToken?: string };
-        if (rotated.accessToken) return rotated.accessToken;
-      }
+      const rotate = async () => {
+        const token = csrf();
+        const res = await fetch(`${api}/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'x-oryx-csrf': token } : {}),
+          },
+          body: JSON.stringify({}),
+        });
+        if (!res.ok) return undefined;
+        const rotated = (await res.json()) as { accessToken?: string };
+        return rotated.accessToken;
+      };
+
+      const rotatedToken = await rotate();
+      if (rotatedToken) return rotatedToken;
 
       // The login fallback still presents the refresh cookie that `signIn`
       // established, and CsrfGuard rejects any unsafe method carrying that
-      // cookie without a matching header. Echo it here too, or the fallback
-      // can never succeed and fails with a 403 instead.
-      const login = await fetch(`${api}/auth/login`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(csrfFromCookie ? { 'x-oryx-csrf': csrfFromCookie } : {}),
-        },
-        body: JSON.stringify({ email, password }),
-      });
-      const body = (await login.json()) as {
+      // cookie without a matching header. Echo the *current* cookie here too,
+      // or the fallback can never succeed and fails with a 403 instead.
+      const login = async () => {
+        const token = csrf();
+        return fetch(`${api}/auth/login`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'x-oryx-csrf': token } : {}),
+          },
+          body: JSON.stringify({ email, password }),
+        });
+      };
+
+      // One retry covers a rotation that landed between reading the cookie and
+      // sending the request; a second failure is a real authentication problem.
+      let response = await login();
+      if (response.status === 403) response = await login();
+      const loginResponse = response;
+      const body = (await loginResponse.json()) as {
         accessToken?: string;
         mfaRequired?: boolean;
         challengeToken?: string;
@@ -76,7 +95,7 @@ export async function apiToken(
       if (body.accessToken) return body.accessToken;
       if (!body.mfaRequired || !secret) {
         throw new Error(
-          `Could not obtain an access token (login status ${login.status}). ` +
+          `Could not obtain an access token (login status ${loginResponse.status}). ` +
             'If MFA is enabled on this account, pass its TOTP secret.',
         );
       }
